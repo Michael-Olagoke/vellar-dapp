@@ -1,11 +1,11 @@
 # Overview
 
-VELA is a **web-first Stellar smart wallet** with a companion **browser
+Vellar is a **web-first Stellar smart wallet** with a companion **browser
 extension**. It combines passkey onboarding, programmable account policies
 (smart accounts), contract verification / trust signals, account cleanup &
 merge tooling, and extension-based dApp connection + signing.
 
-The wallet is non-custodial: VELA never holds, imports, or exports private
+The wallet is non-custodial: Vellar never holds, imports, or exports private
 keys. Authentication is a **passkey** (WebAuthn), and each wallet is a
 **smart-contract account** on Stellar (a Soroban smart wallet), not a classic
 key-pair account.
@@ -25,7 +25,7 @@ key-pair account.
 
 ## The two surfaces
 
-VELA deliberately splits work across two surfaces rather than shipping full
+Vellar deliberately splits work across two surfaces rather than shipping full
 feature parity:
 
 - **Web app** (`apps/web`, Next.js) — the primary surface. Onboarding,

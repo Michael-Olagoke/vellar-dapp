@@ -95,7 +95,7 @@ rolling-window spend cap. See [Policy Contract](./policy-contract.md).
    entries) with explicit actions and whether the account is merge-ready.
 3. `POST /lifecycle/execute` builds **unsigned** cleanup transactions with
    watchable hashes. The user signs them in whatever wallet controls the
-   classic account (VELA holds no classic keys); the wizard watches Horizon for
+   classic account (Vellar holds no classic keys); the wizard watches Horizon for
    each hash to auto-advance.
 4. `POST /lifecycle/merge` refuses until merge-ready, then builds the
    `accountMerge`. Reclaimed XLM goes to the destination.

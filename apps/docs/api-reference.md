@@ -135,7 +135,7 @@ as source).
 
 Builds the **unsigned** cleanup transactions (dependency-ordered: payments →
 trustline removals → offer cancels → data deletions), each with a precomputed
-watchable hash. VELA holds no classic keys, so the user signs these in whatever
+watchable hash. Vellar holds no classic keys, so the user signs these in whatever
 wallet controls the account.
 
 ### `POST /lifecycle/merge`

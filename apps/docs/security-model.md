@@ -1,10 +1,10 @@
 # Security Model
 
-Security is a functional requirement in VELA, not a phase. The core principles:
+Security is a functional requirement in Vellar, not a phase. The core principles:
 
 ## No private-key custody
 
-VELA never holds, imports, or exports a user's private keys.
+Vellar never holds, imports, or exports a user's private keys.
 
 - The **web wallet** is controlled by a **passkey** (WebAuthn). The private key
   lives in the device's secure enclave and never leaves it.

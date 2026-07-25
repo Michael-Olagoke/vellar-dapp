@@ -1,4 +1,4 @@
-# VELA Wallet
+# Vellar Wallet
 
 Web-first Stellar smart wallet with a companion browser extension: passkey onboarding, smart-account policies, contract verification & trust signals, and account cleanup/merge tooling.
 

@@ -1,6 +1,6 @@
 # Observability (idea.md §13, technical-doc.md §10)
 
-VELA services expose Prometheus metrics + structured logs. The **instrumentation**
+Vellar services expose Prometheus metrics + structured logs. The **instrumentation**
 lives in the code (shared via `@vela/service-kit`); **scraping + alerting** is an
 ops concern you wire up in whatever monitoring system your hosting provides
 (Grafana Cloud, a self-hosted Prometheus, Render/Fly metrics, etc.). This doc is

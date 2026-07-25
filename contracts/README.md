@@ -1,6 +1,6 @@
 # Contracts
 
-Soroban (Rust) smart contracts for VELA. See technical-doc.md §11 and idea.md §10.
+Soroban (Rust) smart contracts for Vellar. See technical-doc.md §11 and idea.md §10.
 
 - `smart-account/` — passkey-backed smart account with policy enforcement and modular authorization logic. Built in Phase 2 (wallet core needs it for passkey wallets).
 - `policy-templates/` — generated/templated policy contracts: signer threshold checks, spend limits, contract allowlists, delayed admin actions. Built in Phase 5.

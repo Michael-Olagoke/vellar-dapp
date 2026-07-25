@@ -31,7 +31,7 @@ pub fn __constructor(env: Env, wallet: Address, daily_limit: i128, window_second
 - `wallet` — the single smart account this instance is bound to.
 - `daily_limit` — cumulative window allowance, in **stroops** (1 XLM =
   10,000,000 stroops).
-- `window_seconds` — rolling-window length (VELA uses 24h = 86400 by default).
+- `window_seconds` — rolling-window length (Vellar uses 24h = 86400 by default).
 
 Configuration is written **once** and never mutated — there is no setter. If the
 owner could raise their own cap in-place, the policy would guarantee nothing.

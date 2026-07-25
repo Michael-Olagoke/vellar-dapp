@@ -1,6 +1,6 @@
 # Architecture
 
-VELA is a **pnpm + Turborepo monorepo**. TypeScript is used for all apps,
+Vellar is a **pnpm + Turborepo monorepo**. TypeScript is used for all apps,
 shared packages, and backend services; Rust/Soroban is used only for smart
 contracts.
 
@@ -71,7 +71,7 @@ A Cargo workspace of Soroban (Rust) contracts.
 - `policy-templates/spending-limit` — the configurable spending-limit policy
   contract (implemented, deployed to testnet). See
   [Policy Contract](./policy-contract.md).
-- `smart-account` — reserved. VELA uses the audited **passkey-kit** smart-wallet
+- `smart-account` — reserved. Vellar uses the audited **passkey-kit** smart-wallet
   contract for the account itself rather than a vendored copy.
 
 ## Persistence

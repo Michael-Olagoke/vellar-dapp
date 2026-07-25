@@ -1,6 +1,6 @@
-# VELA Documentation
+# Vellar Documentation
 
-Developer documentation for **VELA** — a web-first Stellar smart wallet with a
+Developer documentation for **Vellar** — a web-first Stellar smart wallet with a
 companion browser extension. This folder is the source for the docs site; each
 page is plain Markdown and renders as-is on GitHub or through any static docs
 tool (Docusaurus, VitePress, MkDocs, …).
@@ -9,7 +9,7 @@ tool (Docusaurus, VitePress, MkDocs, …).
 
 | Page                                    | What it covers                                                              |
 | --------------------------------------- | --------------------------------------------------------------------------- |
-| [Overview](./overview.md)               | What VELA is, its capabilities, and how the pieces fit together             |
+| [Overview](./overview.md)               | What Vellar is, its capabilities, and how the pieces fit together           |
 | [Getting Started](./getting-started.md) | Prerequisites, install, running the full stack locally                      |
 | [Architecture](./architecture.md)       | Monorepo layout, services, shared packages, contracts, data flow            |
 | [API Reference](./api-reference.md)     | Every HTTP endpoint exposed through the API gateway                         |
@@ -19,6 +19,6 @@ tool (Docusaurus, VitePress, MkDocs, …).
 
 ## Status
 
-VELA is under active development. Documentation describes what is **currently
+Vellar is under active development. Documentation describes what is **currently
 implemented**; forward-looking features are marked as such. See each package's
 own `README` for package-level detail.
