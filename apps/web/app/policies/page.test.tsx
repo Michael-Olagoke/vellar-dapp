@@ -58,7 +58,7 @@ const templates = [
 ];
 
 function renderPage() {
-  window.localStorage.setItem("vela.session", JSON.stringify(SESSION));
+  window.localStorage.setItem("vellar.session", JSON.stringify(SESSION));
   render(
     <WalletProvider>
       <Policies />

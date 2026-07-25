@@ -10,7 +10,7 @@ import {
   parseTokenAmount,
   type PreparedPayment,
   type TokenInfo,
-} from "@vela/wallet-sdk";
+} from "vellar-sdk";
 import { isUserCancellation } from "@vela/passkey";
 import { walletErrorMessage } from "@/lib/messages";
 import { trackTransaction } from "@/lib/track";

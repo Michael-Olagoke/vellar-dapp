@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatTokenAmount } from "@vela/wallet-sdk";
+import { formatTokenAmount } from "vellar-sdk";
 import { AppShell } from "@/components/app-shell";
 import { useBalances } from "@/lib/balances";
 import { useWalletSession } from "@/lib/wallet-context";

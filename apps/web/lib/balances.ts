@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { TokenBalance } from "@vela/wallet-sdk";
+import type { TokenBalance } from "vellar-sdk";
 import { walletConfig } from "./config";
 
 // Balance data for the dashboard. The RPC reader (and stellar-sdk with it)
@@ -10,8 +10,8 @@ import { walletConfig } from "./config";
 async function fetchBalances(accountId: string): Promise<TokenBalance[]> {
   const config = walletConfig();
   const [{ createBalanceService }, { createRpcBalanceReader, nativeToken }] = await Promise.all([
-    import("@vela/wallet-sdk"),
-    import("@vela/wallet-sdk/rpc"),
+    import("vellar-sdk"),
+    import("vellar-sdk/rpc"),
   ]);
   const reader = createRpcBalanceReader({
     rpcUrl: config.rpcUrl,

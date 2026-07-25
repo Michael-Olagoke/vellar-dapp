@@ -6,7 +6,7 @@ import {
   type PaymentClient,
   type SacClientLike,
   type WalletConnector,
-} from "@vela/wallet-sdk";
+} from "vellar-sdk";
 import { walletConfig } from "./config";
 import { createHttpWalletBackend } from "./http-backend";
 
@@ -51,7 +51,7 @@ export function getWalletRuntime(): Promise<WalletRuntime> {
     const config = walletConfig();
     const [{ PasskeyKit, SACClient }, { isValidStellarAddress }] = await Promise.all([
       import("passkey-kit"),
-      import("@vela/wallet-sdk/rpc"),
+      import("vellar-sdk/rpc"),
     ]);
 
     const kit = new PasskeyKit({

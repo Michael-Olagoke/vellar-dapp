@@ -25,8 +25,8 @@ function useQuickBalance(wallet: PairedWallet | undefined) {
     void (async () => {
       try {
         const [{ formatTokenAmount }, { createRpcBalanceReader, nativeToken }] = await Promise.all([
-          import("@vela/wallet-sdk/balances"),
-          import("@vela/wallet-sdk/rpc"),
+          import("vellar-sdk/balances"),
+          import("vellar-sdk/rpc"),
         ]);
         const passphrase = NETWORK_PASSPHRASES[wallet.network];
         const token = nativeToken(passphrase);

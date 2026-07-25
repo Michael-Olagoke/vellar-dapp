@@ -46,7 +46,7 @@ beforeEach(() => {
 
 describe("Dashboard", () => {
   it("leads with the balance and shows the truncated account in the shell", async () => {
-    window.localStorage.setItem("vela.session", JSON.stringify(session));
+    window.localStorage.setItem("vellar.session", JSON.stringify(session));
     withBalances();
 
     render(
@@ -69,7 +69,7 @@ describe("Dashboard", () => {
   });
 
   it("opens the receive panel with the full address", async () => {
-    window.localStorage.setItem("vela.session", JSON.stringify(session));
+    window.localStorage.setItem("vellar.session", JSON.stringify(session));
     withBalances();
 
     render(
@@ -84,7 +84,7 @@ describe("Dashboard", () => {
   });
 
   it("opens the send panel", async () => {
-    window.localStorage.setItem("vela.session", JSON.stringify(session));
+    window.localStorage.setItem("vellar.session", JSON.stringify(session));
     withBalances();
 
     render(

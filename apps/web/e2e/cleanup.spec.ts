@@ -14,7 +14,7 @@ const SMART_ACCOUNT = "CAFK7NMQOT7G2SKMREDUII3EOK4APIY54WIK6CVGY72XWFE76YFRDF67"
 async function seedSession(page: Page) {
   await page.addInitScript((accountId) => {
     window.localStorage.setItem(
-      "vela.session",
+      "vellar.session",
       JSON.stringify({
         accountId,
         network: "testnet",

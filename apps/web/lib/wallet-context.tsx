@@ -10,7 +10,7 @@ import {
   type PaymentClient,
   type SessionStatus,
   type WalletConnector,
-} from "@vela/wallet-sdk";
+} from "vellar-sdk";
 import { createRealConnector, getRealPaymentClient } from "./connector-factory";
 
 interface WalletContextValue {

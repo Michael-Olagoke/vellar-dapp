@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WalletSession } from "@vela/types";
-import type { WalletConnector } from "@vela/wallet-sdk";
+import type { WalletConnector } from "vellar-sdk";
 import type { PasskeyEnvironment } from "@vela/passkey";
 import { WalletProvider } from "@/lib/wallet-context";
 import { OnboardingActions } from "./onboarding-actions";
@@ -58,7 +58,7 @@ describe("OnboardingActions", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
     expect(connector.createWallet).toHaveBeenCalledWith({ username: "dumto", network: "testnet" });
     // Session persisted for restore on next load.
-    expect(window.localStorage.getItem("vela.session")).toContain("CABC");
+    expect(window.localStorage.getItem("vellar.session")).toContain("CABC");
   });
 
   it("signs in with an existing passkey", async () => {

@@ -7,8 +7,8 @@ import { walletConfig } from "./config";
 export async function trackTransaction(hash: string): Promise<"success" | "failed"> {
   const config = walletConfig();
   const [{ waitForTransaction }, { createRpcTxStatusReader }] = await Promise.all([
-    import("@vela/wallet-sdk"),
-    import("@vela/wallet-sdk/rpc"),
+    import("vellar-sdk"),
+    import("vellar-sdk/rpc"),
   ]);
   return waitForTransaction(createRpcTxStatusReader({ rpcUrl: config.rpcUrl }), hash);
 }

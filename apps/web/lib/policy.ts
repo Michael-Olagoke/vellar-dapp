@@ -14,11 +14,11 @@ import {
   type SimulateResult,
   type SpendingConstructor,
   type ValidationResult,
-} from "@vela/wallet-sdk";
+} from "vellar-sdk";
 import { walletConfig } from "./config";
 
 // Policy builder data layer (technical-doc.md §5.4, §7.5; idea.md §6.2, §11).
-// The types + client now live in @vela/wallet-sdk so the SDK is the single
+// The types + client now live in vellar-sdk so the SDK is the single
 // source and third-party integrators get the same API (DRY — this file used to
 // duplicate all of it). Here we just bind the SDK client to the web app's
 // walletConfig and keep the function names the /policies page already imports.

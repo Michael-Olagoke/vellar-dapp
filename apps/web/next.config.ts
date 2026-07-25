@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
     "sac-sdk",
     "@vela/types",
     "@vela/ui",
-    "@vela/wallet-sdk",
+    "vellar-sdk",
     "@vela/passkey",
     "@vela/provider-sdk",
     "@vela/policy-sdk",

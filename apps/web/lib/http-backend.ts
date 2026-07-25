@@ -1,8 +1,4 @@
-import {
-  defaultSignedToXdr,
-  type PaymentSubmitBackend,
-  type WalletBackend,
-} from "@vela/wallet-sdk";
+import { defaultSignedToXdr, type PaymentSubmitBackend, type WalletBackend } from "vellar-sdk";
 
 // HTTP implementation of the WalletBackend seam, talking to the api-gateway's
 // Wallet API (idea.md §11). The relayer key stays server-side; the browser

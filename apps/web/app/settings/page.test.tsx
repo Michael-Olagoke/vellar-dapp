@@ -57,7 +57,7 @@ function renderSettings() {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
-  window.localStorage.setItem("vela.session", JSON.stringify(walletSession));
+  window.localStorage.setItem("vellar.session", JSON.stringify(walletSession));
   useSessionsMock.mockReturnValue({
     data: records,
     isPending: false,
@@ -85,7 +85,7 @@ describe("Settings", () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith("sess-other"));
     // Still connected: no redirect, session still persisted.
     expect(replace).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem("vela.session")).toContain("CACCOUNT");
+    expect(window.localStorage.getItem("vellar.session")).toContain("CACCOUNT");
   });
 
   it("revoking this device signs out and redirects", async () => {
@@ -95,7 +95,7 @@ describe("Settings", () => {
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith("sess-current"));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/app"));
-    expect(window.localStorage.getItem("vela.session")).toBeNull();
+    expect(window.localStorage.getItem("vellar.session")).toBeNull();
   });
 
   it("shows the error state with retry", async () => {

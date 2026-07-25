@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PaymentClient, PreparedPayment } from "@vela/wallet-sdk";
+import type { PaymentClient, PreparedPayment } from "vellar-sdk";
 import { WalletProvider } from "@/lib/wallet-context";
 import { SendPayment } from "./send-payment";
 

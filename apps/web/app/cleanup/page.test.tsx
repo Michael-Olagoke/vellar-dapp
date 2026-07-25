@@ -60,7 +60,7 @@ const mergeStep = {
 
 async function inspectWith(plan: typeof blockedPlan) {
   planMock.mockResolvedValue({ plan });
-  window.localStorage.setItem("vela.session", JSON.stringify(SESSION));
+  window.localStorage.setItem("vellar.session", JSON.stringify(SESSION));
   render(
     <WalletProvider>
       <Cleanup />
@@ -132,7 +132,7 @@ describe("Cleanup wizard", () => {
 
   it("surfaces API errors", async () => {
     planMock.mockRejectedValue(new Error("account_not_found"));
-    window.localStorage.setItem("vela.session", JSON.stringify(SESSION));
+    window.localStorage.setItem("vellar.session", JSON.stringify(SESSION));
     render(
       <WalletProvider>
         <Cleanup />
