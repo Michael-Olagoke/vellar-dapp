@@ -1,6 +1,6 @@
 "use client";
 
-import type { PolicyDefinition } from "@vela/types";
+import type { PolicyDefinition } from "@vellar/types";
 import {
   createPolicyClient,
   enforcementLabel,

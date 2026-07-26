@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { verificationRecords } from "@vela/verification-service/db-schema";
-import type { VerificationRecordInternal } from "@vela/verification-service/server";
+import { verificationRecords } from "@vellar/verification-service/db-schema";
+import type { VerificationRecordInternal } from "@vellar/verification-service/server";
 import type { ClaimedJob, VerificationJobStore } from "./job-store";
 
 // Postgres-backed job store, sharing the verification_records table (and its

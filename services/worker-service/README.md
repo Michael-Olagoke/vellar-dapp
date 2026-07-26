@@ -1,4 +1,4 @@
-# @vela/worker-service
+# @vellar/worker-service
 
 The deterministic contract-verification build worker (technical-doc.md §8.4).
 
@@ -43,7 +43,7 @@ The worker needs the same `DATABASE_URL` as `verification-service`. Locally:
 docker compose -f infra/docker/docker-compose.yml up -d   # Postgres on :5433
 # start the API side (gateway + verification-service) however you run the backend,
 # e.g. the combined process:
-pnpm --filter @vela/all-in-one start
+pnpm --filter @vellar/all-in-one start
 ```
 
 ### 3. Start the worker pointed at the image
@@ -52,7 +52,7 @@ pnpm --filter @vela/all-in-one start
 DATABASE_URL=postgres://vela:vela@localhost:5433/vela \
 VERIFY_BUILD_IMAGE=vela-verify:1.94.0 \
 STELLAR_RPC_URL=https://soroban-testnet.stellar.org \
-pnpm --filter @vela/worker-service start
+pnpm --filter @vellar/worker-service start
 ```
 
 On boot it logs `using the Docker build executor (image=vela-verify:1.94.0)`.

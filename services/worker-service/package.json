@@ -1,5 +1,5 @@
 {
-  "name": "@vela/worker-service",
+  "name": "@vellar/worker-service",
   "version": "0.0.0",
   "private": true,
   "description": "Async jobs: deterministic build workers, retries, dead-letter handling, heavy simulations",
@@ -18,10 +18,10 @@
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.0",
-    "@vela/service-kit": "workspace:*",
+    "@vellar/service-kit": "workspace:*",
     "fastify": "^5.4.0",
-    "@vela/types": "workspace:*",
-    "@vela/verification-service": "workspace:*",
+    "@vellar/types": "workspace:*",
+    "@vellar/verification-service": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.22.0"
   },

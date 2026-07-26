@@ -30,16 +30,16 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^16.0.1
         version: 16.0.1
-      '@vela/provider-sdk':
+      '@vellar/provider-sdk':
         specifier: workspace:*
         version: link:../../packages/provider-sdk
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../../packages/types
-      '@vela/ui':
+      '@vellar/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@vela/verification-sdk':
+      '@vellar/verification-sdk':
         specifier: workspace:*
         version: link:../../packages/verification-sdk
       buffer:
@@ -91,19 +91,19 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.83.0
         version: 5.101.2(react@19.2.7)
-      '@vela/passkey':
+      '@vellar/passkey':
         specifier: workspace:*
         version: link:../../packages/passkey
-      '@vela/provider-sdk':
+      '@vellar/provider-sdk':
         specifier: workspace:*
         version: link:../../packages/provider-sdk
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../../packages/types
-      '@vela/ui':
+      '@vellar/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@vela/verification-sdk':
+      '@vellar/verification-sdk':
         specifier: workspace:*
         version: link:../../packages/verification-sdk
       next:
@@ -194,7 +194,7 @@ importers:
 
   packages/provider-sdk:
     dependencies:
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../types
       zod:
@@ -232,7 +232,7 @@ importers:
 
   packages/ui:
     dependencies:
-      '@vela/verification-sdk':
+      '@vellar/verification-sdk':
         specifier: workspace:*
         version: link:../verification-sdk
     devDependencies:
@@ -260,7 +260,7 @@ importers:
 
   packages/verification-sdk:
     dependencies:
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../types
     devDependencies:
@@ -273,19 +273,19 @@ importers:
 
   services/all-in-one:
     dependencies:
-      '@vela/api-gateway':
+      '@vellar/api-gateway':
         specifier: workspace:*
         version: link:../api-gateway
-      '@vela/lifecycle-service':
+      '@vellar/lifecycle-service':
         specifier: workspace:*
         version: link:../lifecycle-service
-      '@vela/policy-service':
+      '@vellar/policy-service':
         specifier: workspace:*
         version: link:../policy-service
-      '@vela/verification-service':
+      '@vellar/verification-service':
         specifier: workspace:*
         version: link:../verification-service
-      '@vela/wallet-service':
+      '@vellar/wallet-service':
         specifier: workspace:*
         version: link:../wallet-service
       tsx:
@@ -310,7 +310,7 @@ importers:
       '@fastify/rate-limit':
         specifier: ^10.2.0
         version: 10.3.0
-      '@vela/service-kit':
+      '@vellar/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
       fastify:
@@ -332,10 +332,10 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^16.0.1
         version: 16.0.1
-      '@vela/service-kit':
+      '@vellar/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../../packages/types
       fastify:
@@ -366,10 +366,10 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^16.0.0
         version: 16.0.1
-      '@vela/service-kit':
+      '@vellar/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../../packages/types
       drizzle-orm:
@@ -406,10 +406,10 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^16.0.0
         version: 16.0.1
-      '@vela/service-kit':
+      '@vellar/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../../packages/types
       drizzle-orm:
@@ -446,10 +446,10 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^16.0.0
         version: 16.0.1
-      '@vela/service-kit':
+      '@vellar/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../../packages/types
       drizzle-orm:
@@ -489,13 +489,13 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^16.0.0
         version: 16.0.1
-      '@vela/service-kit':
+      '@vellar/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
-      '@vela/types':
+      '@vellar/types':
         specifier: workspace:*
         version: link:../../packages/types
-      '@vela/verification-service':
+      '@vellar/verification-service':
         specifier: workspace:*
         version: link:../verification-service
       drizzle-orm:

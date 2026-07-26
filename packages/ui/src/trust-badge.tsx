@@ -1,10 +1,10 @@
 import type { CSSProperties } from "react";
-import { trustSignal, type VerificationStatus } from "@vela/verification-sdk";
+import { trustSignal, type VerificationStatus } from "@vellar/verification-sdk";
 
 // TrustBadge (technical-doc.md §5.5): the trust signal shown before a user
 // interacts with a contract — during transaction approval in the extension AND
-// in the web app. It lives in @vela/ui so both surfaces render it identically
-// (DRY); the status→label/tone mapping comes from @vela/verification-sdk so the
+// in the web app. It lives in @vellar/ui so both surfaces render it identically
+// (DRY); the status→label/tone mapping comes from @vellar/verification-sdk so the
 // wording is defined once. Styling is self-contained (inline) so the badge
 // looks the same in the web app and the sandboxed extension popup without
 // depending on either's stylesheet.

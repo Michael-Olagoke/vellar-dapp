@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { WalletSession } from "@vela/types";
+import type { WalletSession } from "@vellar/types";
 import { AppShell } from "@/components/app-shell";
 import {
   checkPairingStatus,

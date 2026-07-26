@@ -24,15 +24,15 @@ never duplicated across surfaces.
 
 | Package                  | Status      | Responsibility                                                                           |
 | ------------------------ | ----------- | ---------------------------------------------------------------------------------------- |
-| `@vela/types`            | implemented | Domain types shared end to end (wallet session, policy definition, network)              |
-| `@vela/wallet-sdk`       | implemented | Wallet connector (PasskeyKit-backed), payment client, balances, tx-status, session store |
-| `@vela/passkey`          | implemented | WebAuthn support detection + error normalization                                         |
-| `@vela/provider-sdk`     | implemented | dApp provider protocol (zod-validated), page provider, per-origin permissions            |
-| `@vela/service-kit`      | implemented | Shared backend bootstrap — health route, startup/shutdown, safe DB connect               |
-| `@vela/policy-sdk`       | stub        | Policy client helpers (logic currently lives in the web app + policy-service)            |
-| `@vela/lifecycle-sdk`    | stub        | Lifecycle client helpers (logic currently in the web app + lifecycle-service)            |
-| `@vela/verification-sdk` | stub        | Verification client helpers (awaits the verification service)                            |
-| `@vela/ui`               | stub        | Shared UI primitives                                                                     |
+| `@vellar/types`            | implemented | Domain types shared end to end (wallet session, policy definition, network)              |
+| `vellar-sdk` (published)   | implemented | Wallet connector (PasskeyKit-backed), payments, balances, tx-status, sessions, policies, x402 — the public npm package apps consume (single source of truth per decisions.md 2026-07-25) |
+| `@vellar/passkey`          | implemented | WebAuthn support detection + error normalization                                         |
+| `@vellar/provider-sdk`     | implemented | dApp provider protocol (zod-validated), page provider, per-origin permissions            |
+| `@vellar/service-kit`      | implemented | Shared backend bootstrap — health route, startup/shutdown, safe DB connect               |
+| `@vellar/policy-sdk`       | stub        | Policy client helpers (logic currently lives in the web app + policy-service)            |
+| `@vellar/lifecycle-sdk`    | stub        | Lifecycle client helpers (logic currently in the web app + lifecycle-service)            |
+| `@vellar/verification-sdk` | stub        | Verification client helpers (awaits the verification service)                            |
+| `@vellar/ui`               | stub        | Shared UI primitives                                                                     |
 
 > The **stub** packages are intentional placeholders. Their functionality
 > exists today inside the apps and services; extracting it into these shared
@@ -40,7 +40,7 @@ never duplicated across surfaces.
 
 ## Backend services (`services/`)
 
-All services are Fastify apps in TypeScript, bootstrapped via `@vela/service-kit`.
+All services are Fastify apps in TypeScript, bootstrapped via `@vellar/service-kit`.
 
 | Service                | Port | Status      | Responsibility                                                                 |
 | ---------------------- | ---- | ----------- | ------------------------------------------------------------------------------ |

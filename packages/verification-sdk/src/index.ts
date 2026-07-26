@@ -1,6 +1,6 @@
-import type { VerificationRecord, VerificationStatus } from "@vela/types";
+import type { VerificationRecord, VerificationStatus } from "@vellar/types";
 
-// @vela/verification-sdk — the shared client for the verification API
+// @vellar/verification-sdk — the shared client for the verification API
 // (idea.md §11), used by BOTH the web app (submission + explorer) and the
 // extension (trust-badge status lookup). Keeping the calling logic here means
 // the two surfaces never duplicate it — the trust-signal contract is defined

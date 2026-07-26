@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
-import { registerHealth, registerMetrics, domainMetrics, recordOutcome } from "@vela/service-kit";
-import type { PolicyDefinition } from "@vela/types";
+import { registerHealth, registerMetrics, domainMetrics, recordOutcome } from "@vellar/service-kit";
+import type { PolicyDefinition } from "@vellar/types";
 import { PolicyDeployError, type PolicyDeployer } from "./deploy";
 import { generatePolicy, templates, validateDefinition, type GeneratedPolicy } from "./templates";
 

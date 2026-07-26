@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WalletSession } from "@vela/types";
+import type { WalletSession } from "@vellar/types";
 import type { WalletConnector } from "vellar-sdk";
-import type { PasskeyEnvironment } from "@vela/passkey";
+import type { PasskeyEnvironment } from "@vellar/passkey";
 import { WalletProvider } from "@/lib/wallet-context";
 import { OnboardingActions } from "./onboarding-actions";
 

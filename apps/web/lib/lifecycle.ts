@@ -1,4 +1,4 @@
-import type { CleanupPlan } from "@vela/types";
+import type { CleanupPlan } from "@vellar/types";
 import { walletConfig } from "./config";
 
 // Cleanup wizard data layer (technical-doc.md §7.7; decisions.md option A).

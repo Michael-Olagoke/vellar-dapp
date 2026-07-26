@@ -55,7 +55,7 @@ you don't need the extension or don't have Chrome:
 
 ```sh
 pnpm dev                             # everything (extension needs Chrome)
-pnpm dev --filter=!@vela/extension   # web + gateway + services only
+pnpm dev --filter=!@vellar/extension   # web + gateway + services only
 ```
 
 ## Ports
@@ -101,7 +101,7 @@ authenticator) requires the gateway + services running:
 
 ```sh
 pnpm exec playwright install chromium   # once
-pnpm --filter @vela/web test:e2e
+pnpm --filter @vellar/web test:e2e
 ```
 
 ## Soroban contract (optional)

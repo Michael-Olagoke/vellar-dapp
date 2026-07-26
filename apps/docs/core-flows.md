@@ -11,7 +11,7 @@ Touch ID; lands on the dashboard with a new account.
 
 **What happens:**
 
-1. `@vela/wallet-sdk`'s PasskeyKit connector calls `kit.createWallet(app, user)`,
+1. `vellar-sdk`'s PasskeyKit connector calls `kit.createWallet(app, user)`,
    which registers a passkey and prepares the smart-account deployment.
 2. The signed deployment transaction is posted to `POST /wallet/create`.
 3. wallet-service submits it (relayer/sponsor) and persists the

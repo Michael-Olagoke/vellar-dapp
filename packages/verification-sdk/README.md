@@ -1,3 +1,3 @@
-# @vela/verification-sdk
+# @vellar/verification-sdk
 
 Verification client: submission, status polling, trust signal helpers

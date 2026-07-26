@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { PolicyDefinition } from "@vela/types";
+import type { PolicyDefinition } from "@vellar/types";
 
 // PolicyTemplateRegistry + PolicyValidator (idea.md §6.2; §19 D3: policies
 // come from structured templates, never freeform). Each template declares how

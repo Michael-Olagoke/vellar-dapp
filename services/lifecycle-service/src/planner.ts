@@ -1,4 +1,4 @@
-import type { CleanupPlan } from "@vela/types";
+import type { CleanupPlan } from "@vellar/types";
 import type { HorizonAccount } from "./horizon";
 
 // CleanupPlanner (idea.md §6.4): turns inspected account state into the

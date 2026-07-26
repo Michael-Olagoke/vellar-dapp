@@ -1,4 +1,4 @@
-import type { VerificationStatus } from "@vela/types";
+import type { VerificationStatus } from "@vellar/types";
 import { hashesMatch } from "./artifact";
 import { BuildExecutorError, type BuildExecutor, type BuildInput } from "./executor";
 import { ArtifactResolveError, type ContractArtifactResolver } from "./resolver";

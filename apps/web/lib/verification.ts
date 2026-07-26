@@ -3,12 +3,12 @@ import {
   type PublicVerificationRecord,
   type SubmitVerificationInput,
   type VerificationStatusResult,
-} from "@vela/verification-sdk";
+} from "@vellar/verification-sdk";
 import { walletConfig } from "./config";
 
 // Web-app binding for the verification API (idea.md §11): builds the shared
 // verification-sdk client against the configured gateway. The web app and the
-// extension both use @vela/verification-sdk — the calling logic isn't
+// extension both use @vellar/verification-sdk — the calling logic isn't
 // duplicated (technical-doc.md §5.5).
 
 export type { PublicVerificationRecord, SubmitVerificationInput, VerificationStatusResult };

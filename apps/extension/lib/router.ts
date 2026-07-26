@@ -4,7 +4,7 @@ import {
   normalizeOrigin,
   type ProviderRequest,
   type ResponsePayload,
-} from "@vela/provider-sdk";
+} from "@vellar/provider-sdk";
 import type { ExtensionState } from "./state";
 
 // Pure request router (technical-doc.md §7.3): decides, from validated

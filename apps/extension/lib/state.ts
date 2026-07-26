@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { networkSchema, permissionGrantSchema, type PermissionGrant } from "@vela/provider-sdk";
+import { networkSchema, permissionGrantSchema, type PermissionGrant } from "@vellar/provider-sdk";
 
 // Extension-local state (technical-doc.md §8.2: store minimal sensitive local
 // state). Holds ONLY the paired wallet identity (public address + network) and

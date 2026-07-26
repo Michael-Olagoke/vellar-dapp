@@ -1,5 +1,5 @@
 {
-  "name": "@vela/lifecycle-service",
+  "name": "@vellar/lifecycle-service",
   "version": "0.0.0",
   "private": true,
   "description": "Account inspection, blocker detection, cleanup planning, merge validation",
@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.1",
-    "@vela/service-kit": "workspace:*",
-    "@vela/types": "workspace:*",
+    "@vellar/service-kit": "workspace:*",
+    "@vellar/types": "workspace:*",
     "fastify": "^5.4.0",
     "zod": "^4.0.0"
   },

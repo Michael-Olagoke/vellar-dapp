@@ -4,14 +4,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import type { Network } from "@vela/types";
+import type { Network } from "@vellar/types";
 import {
   formatTokenAmount,
   parseTokenAmount,
   type PreparedPayment,
   type TokenInfo,
 } from "vellar-sdk";
-import { isUserCancellation } from "@vela/passkey";
+import { isUserCancellation } from "@vellar/passkey";
 import { walletErrorMessage } from "@/lib/messages";
 import { trackTransaction } from "@/lib/track";
 import { usePaymentClient } from "@/lib/wallet-context";

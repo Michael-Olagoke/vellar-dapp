@@ -1,3 +1,3 @@
-# @vela/types
+# @vellar/types
 
 Shared domain types for wallet, policy, verification, and lifecycle modules

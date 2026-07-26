@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PolicyDefinition, WalletSession } from "@vela/types";
+import type { PolicyDefinition, WalletSession } from "@vellar/types";
 import { AppShell } from "@/components/app-shell";
 import { getWalletRuntime } from "@/lib/connector-factory";
 import { useWalletSession } from "@/lib/wallet-context";

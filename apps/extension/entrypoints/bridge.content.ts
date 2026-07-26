@@ -1,6 +1,6 @@
 import { defineContentScript } from "#imports";
 import { browser } from "wxt/browser";
-import { parseRequestEnvelope, responseEnvelope, errorPayload } from "@vela/provider-sdk";
+import { parseRequestEnvelope, responseEnvelope, errorPayload } from "@vellar/provider-sdk";
 import type { ProviderRequestMessage, ProviderRequestReply } from "../lib/messages";
 
 // Isolated-world bridge (technical-doc.md §8.2: approval logic is isolated

@@ -1,4 +1,4 @@
-import { portFromEnv, startService } from "@vela/service-kit";
+import { portFromEnv, startService } from "@vellar/service-kit";
 import { buildServer } from "./server";
 
 const app = buildServer();

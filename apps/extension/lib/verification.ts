@@ -1,4 +1,4 @@
-import { createVerificationClient } from "@vela/verification-sdk";
+import { createVerificationClient } from "@vellar/verification-sdk";
 
 // Extension binding for the verification API. The gateway URL is a build-time
 // env (WXT inlines import.meta.env); it defaults to the public gateway so the

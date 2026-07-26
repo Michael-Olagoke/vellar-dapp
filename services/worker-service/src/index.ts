@@ -1,13 +1,13 @@
 import pg from "pg";
 import Fastify from "fastify";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { domainMetrics, portFromEnv, registerHealth, registerMetrics } from "@vela/service-kit";
+import { domainMetrics, portFromEnv, registerHealth, registerMetrics } from "@vellar/service-kit";
 import { configFromEnv, executorFromConfig } from "./config";
 import { createRpcArtifactResolver } from "./resolver";
 import { createPgJobStore } from "./pg-job-store";
 import { startWorkerLoop, type WorkerMetrics } from "./loop";
 
-// @vela/worker-service — the deterministic build worker (technical-doc.md §8.4).
+// @vellar/worker-service — the deterministic build worker (technical-doc.md §8.4).
 //
 // Runs as its OWN isolated process, never combined with the wallet/policy
 // services that hold sponsor keys (see the all-in-one note): it executes

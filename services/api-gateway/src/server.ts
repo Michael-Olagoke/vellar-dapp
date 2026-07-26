@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import proxy from "@fastify/http-proxy";
 import rateLimit from "@fastify/rate-limit";
-import { registerHealth, registerMetrics } from "@vela/service-kit";
+import { registerHealth, registerMetrics } from "@vellar/service-kit";
 
 // Gateway (technical-doc.md §6.3, §8; idea.md §12): the single public entry
 // point, so the cross-cutting security controls live HERE (defense at the

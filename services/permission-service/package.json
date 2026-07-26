@@ -1,5 +1,5 @@
 {
-  "name": "@vela/permission-service",
+  "name": "@vellar/permission-service",
   "version": "0.0.0",
   "private": true,
   "description": "dApp origin permissions, extension connection records, revocation state",

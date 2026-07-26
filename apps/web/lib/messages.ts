@@ -1,4 +1,4 @@
-import { normalizePasskeyError, type PasskeyErrorCode } from "@vela/passkey";
+import { normalizePasskeyError, type PasskeyErrorCode } from "@vellar/passkey";
 import { WalletApiError } from "./http-backend";
 
 // One place mapping failures to user-facing copy (DRY across onboarding,

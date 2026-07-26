@@ -5,7 +5,7 @@ import {
   createMemoryVerificationRepository,
   createNoopBuildJobQueue,
   type VerificationRepository,
-} from "@vela/verification-service/server";
+} from "@vellar/verification-service/server";
 import { stubBuildExecutor } from "./executor";
 import { createStaticArtifactResolver } from "./resolver";
 import { runWorkerTick } from "./loop";

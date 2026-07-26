@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PermissionGrant } from "@vela/provider-sdk";
+import type { PermissionGrant } from "@vellar/provider-sdk";
 import {
   addGrant,
   clearPairedWallet,

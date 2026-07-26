@@ -1,4 +1,4 @@
-import { portFromEnv, startService, tryConnectDb } from "@vela/service-kit";
+import { portFromEnv, startService, tryConnectDb } from "@vellar/service-kit";
 import { configFromEnv } from "./config";
 import { createPolicyDeployer } from "./deploy";
 import { buildServer, type PolicyServiceDeps } from "./server";

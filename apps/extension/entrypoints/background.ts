@@ -1,7 +1,7 @@
 import { defineBackground } from "#imports";
 import "../lib/buffer-polyfill";
 import { browser } from "wxt/browser";
-import { CONNECT_GRANT_CAPABILITIES, errorPayload, type ResponsePayload } from "@vela/provider-sdk";
+import { CONNECT_GRANT_CAPABILITIES, errorPayload, type ResponsePayload } from "@vellar/provider-sdk";
 import { browserKv } from "../lib/browser-kv";
 import { createIdbDeviceKeyStore, devicePublicKeyHex, ensureDeviceKey } from "../lib/device-key";
 import { signTransactionXdr } from "../lib/tx-signer";

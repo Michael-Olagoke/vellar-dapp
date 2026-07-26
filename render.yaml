@@ -1,6 +1,6 @@
 # Render Blueprint — combined VELA backend + Postgres (free tier).
 #
-# Deploys the single-process backend (@vela/all-in-one: gateway + wallet +
+# Deploys the single-process backend (@vellar/all-in-one: gateway + wallet +
 # lifecycle + policy) as one free web service, plus a free Postgres.
 #
 # Free-tier caveats:
@@ -17,10 +17,10 @@ services:
     name: vellar-backend
     runtime: node
     plan: free
-    # Render runs from the repo root; install the workspace, build the SDK dist
-    # the app imports, then start the combined backend.
-    buildCommand: "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @vela/wallet-sdk build"
-    startCommand: "pnpm --filter @vela/all-in-one start"
+    # Render runs from the repo root; install the workspace, then start the
+    # combined backend. (The SDK is a published npm dep — nothing to pre-build.)
+    buildCommand: "corepack enable && pnpm install --frozen-lockfile"
+    startCommand: "pnpm --filter @vellar/all-in-one start"
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION

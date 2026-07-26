@@ -1,5 +1,5 @@
 {
-  "name": "@vela/all-in-one",
+  "name": "@vellar/all-in-one",
   "version": "0.0.0",
   "private": true,
   "description": "Combined single-process backend (gateway + wallet + lifecycle + policy) for demo/low-scale hosting",
@@ -10,11 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vela/api-gateway": "workspace:*",
-    "@vela/wallet-service": "workspace:*",
-    "@vela/lifecycle-service": "workspace:*",
-    "@vela/policy-service": "workspace:*",
-    "@vela/verification-service": "workspace:*",
+    "@vellar/api-gateway": "workspace:*",
+    "@vellar/wallet-service": "workspace:*",
+    "@vellar/lifecycle-service": "workspace:*",
+    "@vellar/policy-service": "workspace:*",
+    "@vellar/verification-service": "workspace:*",
     "tsx": "^4.20.0"
   },
   "devDependencies": {

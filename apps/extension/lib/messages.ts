@@ -1,4 +1,4 @@
-import type { ProviderRequest, RequestEnvelope, ResponsePayload } from "@vela/provider-sdk";
+import type { ProviderRequest, RequestEnvelope, ResponsePayload } from "@vellar/provider-sdk";
 
 // Internal extension messaging contracts (content script <-> background <->
 // popup). These never cross into page context.

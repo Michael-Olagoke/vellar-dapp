@@ -1,5 +1,5 @@
 import { defineContentScript } from "#imports";
-import { createPageProvider, createWindowTransport } from "@vela/provider-sdk";
+import { createPageProvider, createWindowTransport } from "@vellar/provider-sdk";
 
 // MAIN-world script: exposes the wallet provider to dApps as window.vela
 // (technical-doc.md §5.3). Runs in page context — it holds no state and no

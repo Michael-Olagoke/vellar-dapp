@@ -1,4 +1,4 @@
-import type { Network } from "@vela/types";
+import type { Network } from "@vellar/types";
 
 // Client-side wallet configuration. NEXT_PUBLIC_* vars are inlined at build
 // time; defaults target Stellar testnet (idea.md §6.1: testnet and mainnet

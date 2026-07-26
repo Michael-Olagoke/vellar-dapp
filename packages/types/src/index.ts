@@ -1,4 +1,4 @@
-// @vela/types — shared domain types.
+// @vellar/types — shared domain types.
 // Sourced from idea.md §6 (core interfaces). technical-doc.md governs scope.
 // Keep these in sync with the docs; flag any divergence in docs/decisions.md.
 

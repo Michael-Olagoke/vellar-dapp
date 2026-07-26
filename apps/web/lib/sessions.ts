@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Network } from "@vela/types";
+import type { Network } from "@vellar/types";
 import { walletConfig } from "./config";
 import { createHttpWalletBackend } from "./http-backend";
 

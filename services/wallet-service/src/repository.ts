@@ -1,4 +1,4 @@
-import type { Network } from "@vela/types";
+import type { Network } from "@vellar/types";
 
 // Persistence seams for wallet metadata, session records, and audit logs
 // (technical-doc.md §6.3 Wallet Service; idea.md §9 wallets/wallet_sessions/

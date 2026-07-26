@@ -1,7 +1,7 @@
 "use client";
 
-import type { WalletSession } from "@vela/types";
-import type { VelaProvider } from "@vela/provider-sdk";
+import type { WalletSession } from "@vellar/types";
+import type { VelaProvider } from "@vellar/provider-sdk";
 import { walletConfig } from "./config";
 import { getWalletRuntime } from "./connector-factory";
 

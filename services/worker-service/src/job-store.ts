@@ -1,4 +1,4 @@
-import type { VerificationStatus } from "@vela/types";
+import type { VerificationStatus } from "@vellar/types";
 import type { VerificationJobInput } from "./verify";
 
 // The worker's view of the shared verification store. verification-service

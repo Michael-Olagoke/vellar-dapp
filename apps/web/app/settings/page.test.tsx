@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WalletSession } from "@vela/types";
+import type { WalletSession } from "@vellar/types";
 import { WalletProvider } from "@/lib/wallet-context";
 import Settings from "./page";
 

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
-import type { CreateWalletInput, Network, WalletSession } from "@vela/types";
+import type { CreateWalletInput, Network, WalletSession } from "@vellar/types";
 import {
   createMemoryStorageAdapter,
   createSessionStore,

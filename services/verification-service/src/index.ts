@@ -1,8 +1,8 @@
-import { portFromEnv, startService, tryConnectDb } from "@vela/service-kit";
+import { portFromEnv, startService, tryConnectDb } from "@vellar/service-kit";
 import { configFromEnv } from "./config";
 import { buildServer, type VerificationServiceDeps } from "./server";
 
-// @vela/verification-service — accepts contract verification submissions, stores
+// @vellar/verification-service — accepts contract verification submissions, stores
 // VerificationRecords, and enqueues deterministic-rebuild jobs (idea.md §6.3,
 // §11; technical-doc.md §5.5/§7.6). It never runs builds itself — worker-service
 // does that in an isolated process (§8.4) and updates records via the shared

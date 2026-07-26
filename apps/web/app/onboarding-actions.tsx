@@ -7,8 +7,8 @@ import {
   environmentFromWindow,
   isUserCancellation,
   type PasskeySupport,
-} from "@vela/passkey";
-import type { PasskeyEnvironment } from "@vela/passkey";
+} from "@vellar/passkey";
+import type { PasskeyEnvironment } from "@vellar/passkey";
 import { walletConfig } from "@/lib/config";
 import { walletErrorMessage } from "@/lib/messages";
 import { useWalletActions } from "@/lib/wallet-context";

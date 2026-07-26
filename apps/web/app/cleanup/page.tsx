@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CleanupPlan } from "@vela/types";
+import type { CleanupPlan } from "@vellar/types";
 import { AppShell } from "@/components/app-shell";
 import {
   buildMerge,

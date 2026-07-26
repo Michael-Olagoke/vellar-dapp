@@ -1,5 +1,5 @@
 {
-  "name": "@vela/policy-service",
+  "name": "@vellar/policy-service",
   "version": "0.0.0",
   "private": true,
   "description": "Policy schema validation, template registry, simulation and deployment orchestration",
@@ -19,8 +19,8 @@
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.0",
-    "@vela/service-kit": "workspace:*",
-    "@vela/types": "workspace:*",
+    "@vellar/service-kit": "workspace:*",
+    "@vellar/types": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.4.0",
     "pg": "^8.22.0",

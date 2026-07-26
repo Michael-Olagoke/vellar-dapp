@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import type { Network } from "@vela/types";
+import type { Network } from "@vellar/types";
 import {
   DuplicateWalletError,
   type AuditLog,

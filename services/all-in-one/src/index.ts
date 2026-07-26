@@ -24,11 +24,11 @@
 // Each service module self-starts (top-level await in its index), and awaiting
 // the import ensures its listen() has resolved. Start the three internal
 // services BEFORE the gateway, so the gateway's proxy targets are live.
-await import("@vela/wallet-service");
-await import("@vela/lifecycle-service");
-await import("@vela/policy-service");
-await import("@vela/verification-service");
-await import("@vela/api-gateway");
+await import("@vellar/wallet-service");
+await import("@vellar/lifecycle-service");
+await import("@vellar/policy-service");
+await import("@vellar/verification-service");
+await import("@vellar/api-gateway");
 
 // eslint-disable-next-line no-console
 console.log("[all-in-one] all backend services started in one process");

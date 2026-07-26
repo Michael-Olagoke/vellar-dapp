@@ -1,4 +1,4 @@
-import type { VerificationStatus } from "@vela/types";
+import type { VerificationStatus } from "@vellar/types";
 import type { ClaimedJob, VerificationJobStore } from "./job-store";
 import type { VerificationJobInput } from "./verify";
 

@@ -4,7 +4,7 @@
     "web": {
       "root": "apps/web",
       "framework": "nextjs",
-      "buildCommand": "cd ../.. && pnpm exec turbo build --filter=@vela/web...",
+      "buildCommand": "cd ../.. && pnpm exec turbo build --filter=@vellar/web...",
       "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
       "outputDirectory": ".next"
     }

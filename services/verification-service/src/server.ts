@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
-import { registerHealth, registerMetrics } from "@vela/service-kit";
-import type { VerificationRecord } from "@vela/types";
+import { registerHealth, registerMetrics } from "@vellar/service-kit";
+import type { VerificationRecord } from "@vellar/types";
 
 // Verification API (idea.md §11, technical-doc.md §5.5/§7.6): a developer submits
 // a contract's source (repo+commit or upload) and build metadata; the service
@@ -17,7 +17,7 @@ import type { VerificationRecord } from "@vela/types";
 
 /**
  * A verification record plus the fields the pipeline needs beyond the public
- * shape in @vela/types: the build log (surfaced on failure) and the source
+ * shape in @vellar/types: the build log (surfaced on failure) and the source
  * archive reference for upload submissions.
  */
 export interface VerificationRecordInternal extends VerificationRecord {
@@ -225,7 +225,7 @@ export function buildServer(deps: VerificationServiceDeps = {}): FastifyInstance
 }
 
 /** Strip internal-only fields (archive ref, lockfile hash) from API responses —
- * the public record is the @vela/types shape plus the build log. */
+ * the public record is the @vellar/types shape plus the build log. */
 function toPublic(record: VerificationRecordInternal): VerificationRecord & { log?: string } {
   const { sourceArchiveRef: _ref, lockfileHash: _lock, ...pub } = record;
   return pub;

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { TrustBadge } from "@vela/ui";
-import { VerificationApiError } from "@vela/verification-sdk";
+import { TrustBadge } from "@vellar/ui";
+import { VerificationApiError } from "@vellar/verification-sdk";
 import { AppShell } from "@/components/app-shell";
 import {
   getVerificationHistory,

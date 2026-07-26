@@ -1,3 +1,3 @@
-# @vela/permission-service
+# @vellar/permission-service
 
 dApp origin permissions, extension connection records, revocation state

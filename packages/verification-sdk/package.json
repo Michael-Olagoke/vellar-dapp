@@ -1,5 +1,5 @@
 {
-  "name": "@vela/verification-sdk",
+  "name": "@vellar/verification-sdk",
   "version": "0.0.0",
   "private": true,
   "description": "Verification client: submission, status polling, trust signal helpers",
@@ -16,6 +16,6 @@
     "vitest": "^3.2.0"
   },
   "dependencies": {
-    "@vela/types": "workspace:*"
+    "@vellar/types": "workspace:*"
   }
 }

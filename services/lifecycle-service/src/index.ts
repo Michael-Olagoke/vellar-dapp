@@ -1,4 +1,4 @@
-import { portFromEnv, startService } from "@vela/service-kit";
+import { portFromEnv, startService } from "@vellar/service-kit";
 import { createHorizonAccountReader } from "./horizon";
 import { buildServer } from "./server";
 

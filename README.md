@@ -39,7 +39,7 @@ pnpm typecheck
 
    ```sh
    pnpm dev                          # everything, incl. the extension (needs Chrome)
-   pnpm dev --filter=!@vela/extension  # web + gateway + services only
+   pnpm dev --filter=!@vellar/extension  # web + gateway + services only
    ```
 
    Ports: web `:3000`, gateway `:4000`, wallet `:4001`, lifecycle `:4002`,

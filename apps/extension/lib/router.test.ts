@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PermissionGrant, ProviderRequest } from "@vela/provider-sdk";
+import type { PermissionGrant, ProviderRequest } from "@vellar/provider-sdk";
 import { routeProviderRequest } from "./router";
 import type { ExtensionState } from "./state";
 
