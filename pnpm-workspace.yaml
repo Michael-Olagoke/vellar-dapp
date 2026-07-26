@@ -7,6 +7,8 @@ allowBuilds:
   sharp: true
   spawn-sync: false
   "@tailwindcss/oxide": true
+minimumReleaseAgeExclude:
+  - vellar-sdk@0.4.0
 # Security overrides: force patched versions of vulnerable TRANSITIVE deps
 # (Dependabot alerts, 2026-07). All same-major, backward-compatible patch/minor
 # bumps. Re-check + prune when the direct deps that pull these in are upgraded.
