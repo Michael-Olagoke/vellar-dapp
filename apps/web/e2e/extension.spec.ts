@@ -13,7 +13,10 @@ import { fundSmartWallet } from "./fund";
 const EXTENSION_PATH = path.resolve(__dirname, "../../extension/.output/chrome-mv3");
 const DAPP_ORIGIN = "https://dapp-e2e.example";
 
-test.skip(!existsSync(EXTENSION_PATH), "extension not built (pnpm --filter @vellar/extension build)");
+test.skip(
+  !existsSync(EXTENSION_PATH),
+  "extension not built (pnpm --filter @vellar/extension build)",
+);
 
 async function enableVirtualAuthenticator(context: BrowserContext, page: Page) {
   const cdp = await context.newCDPSession(page);

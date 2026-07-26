@@ -22,17 +22,17 @@ infra/          Local dev infrastructure (docker-compose: Postgres, Redis)
 Web and extension share logic through these packages so wallet behavior is
 never duplicated across surfaces.
 
-| Package                  | Status      | Responsibility                                                                           |
-| ------------------------ | ----------- | ---------------------------------------------------------------------------------------- |
-| `@vellar/types`            | implemented | Domain types shared end to end (wallet session, policy definition, network)              |
+| Package                    | Status      | Responsibility                                                                                                                                                                           |
+| -------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@vellar/types`            | implemented | Domain types shared end to end (wallet session, policy definition, network)                                                                                                              |
 | `vellar-sdk` (published)   | implemented | Wallet connector (PasskeyKit-backed), payments, balances, tx-status, sessions, policies, x402 — the public npm package apps consume (single source of truth per decisions.md 2026-07-25) |
-| `@vellar/passkey`          | implemented | WebAuthn support detection + error normalization                                         |
-| `@vellar/provider-sdk`     | implemented | dApp provider protocol (zod-validated), page provider, per-origin permissions            |
-| `@vellar/service-kit`      | implemented | Shared backend bootstrap — health route, startup/shutdown, safe DB connect               |
-| `@vellar/policy-sdk`       | stub        | Policy client helpers (logic currently lives in the web app + policy-service)            |
-| `@vellar/lifecycle-sdk`    | stub        | Lifecycle client helpers (logic currently in the web app + lifecycle-service)            |
-| `@vellar/verification-sdk` | stub        | Verification client helpers (awaits the verification service)                            |
-| `@vellar/ui`               | stub        | Shared UI primitives                                                                     |
+| `@vellar/passkey`          | implemented | WebAuthn support detection + error normalization                                                                                                                                         |
+| `@vellar/provider-sdk`     | implemented | dApp provider protocol (zod-validated), page provider, per-origin permissions                                                                                                            |
+| `@vellar/service-kit`      | implemented | Shared backend bootstrap — health route, startup/shutdown, safe DB connect                                                                                                               |
+| `@vellar/policy-sdk`       | stub        | Policy client helpers (logic currently lives in the web app + policy-service)                                                                                                            |
+| `@vellar/lifecycle-sdk`    | stub        | Lifecycle client helpers (logic currently in the web app + lifecycle-service)                                                                                                            |
+| `@vellar/verification-sdk` | stub        | Verification client helpers (awaits the verification service)                                                                                                                            |
+| `@vellar/ui`               | stub        | Shared UI primitives                                                                                                                                                                     |
 
 > The **stub** packages are intentional placeholders. Their functionality
 > exists today inside the apps and services; extracting it into these shared

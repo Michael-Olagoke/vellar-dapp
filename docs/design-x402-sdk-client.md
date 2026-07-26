@@ -1,7 +1,7 @@
 # Design note — SDK x402 client (`vellar-sdk` 0.4.0)
 
 **Status:** IMPLEMENTED 2026-07-26 (see docs/decisions.md). Built as designed; both signers shipped. Live-validated: the built SDK settled a real x402 payment on-chain (tx `72e5b74c…`). 17 new unit tests; full suite 122 green.
-**Scope:** the x402 *client* only — the fetch wrapper, the smart-account V1 signer, and the max-price guard. Agent session-key management (mint/list/revoke UI) and the headless-agent runtime example are separate BUILD-PLAN items (§17.3 / 8C) and are **out of scope here**.
+**Scope:** the x402 _client_ only — the fetch wrapper, the smart-account V1 signer, and the max-price guard. Agent session-key management (mint/list/revoke UI) and the headless-agent runtime example are separate BUILD-PLAN items (§17.3 / 8C) and are **out of scope here**.
 **Grounding:** technical-doc.md §17.2/§17.3; the proven spike in `scripts/x402-spike/` (matrix a PASS, budget-enforcement PASS, token-scoped PASS); the SDK patterns in `vellar-sdk/src/{client,policy-facade,payments-client}.ts`.
 
 ---
@@ -11,7 +11,7 @@
 - A smart account (C-address) pays x402 via an **ed25519 signer with V1 (`sorobanCredentialsAddress`) credentials** — verified + settled on the live facilitator.
 - The off-the-shelf `@x402/stellar` client signer is **wrong for us**: it builds a classic `{public_key, signature}` credential that a Vellar smart wallet's `__check_auth` won't accept. We MUST supply our own signer that produces the smart-wallet signature map (`Vec[Map[SignerKey.Ed25519 → Signature.Ed25519]]`) on a V1 credential.
 - Protocol facts the client must honor: the payment goes in the **`PAYMENT-SIGNATURE`** header (not `X-PAYMENT`); the payload must nest **`accepted`** = the requirements; the facilitator advertises `areFeesSponsored` and rebuilds the tx (client must not use the facilitator address as tx source).
-- Facilitators verify by **re-simulation** (which runs `__check_auth`, hence the budget policy) — so an over-budget or wrong-token payment is rejected at *verify* time, before settlement.
+- Facilitators verify by **re-simulation** (which runs `__check_auth`, hence the budget policy) — so an over-budget or wrong-token payment is rejected at _verify_ time, before settlement.
 
 None of that is re-designed here; it's the contract the client wraps.
 
@@ -23,7 +23,7 @@ Mirrors the existing facade pattern (`wallet.policies`). A new `wallet.x402` fac
 // ── on the wallet handle (human/passkey flow) ─────────────────────────────
 interface VellarWallet {
   // …existing: session, create, connect, pay, policies, connector, payments
-  readonly x402: X402Client;   // NEW — requires x402 config (see §4)
+  readonly x402: X402Client; // NEW — requires x402 config (see §4)
 }
 
 interface X402Client {
@@ -50,14 +50,15 @@ interface X402FetchInit extends RequestInit {
 }
 
 interface X402Response {
-  response: Response;            // the unlocked resource response (2xx)
-  settlement?: {                 // present when a payment was made
-    transaction: string;         // on-chain settlement tx hash
-    payer: string;               // the C-address
+  response: Response; // the unlocked resource response (2xx)
+  settlement?: {
+    // present when a payment was made
+    transaction: string; // on-chain settlement tx hash
+    payer: string; // the C-address
     asset: string;
     amount: bigint;
   };
-  paid: boolean;                 // false if the resource needed no payment
+  paid: boolean; // false if the resource needed no payment
 }
 ```
 
@@ -73,7 +74,10 @@ interface SmartAccountX402Signer {
   /** The C-address that pays (the auth-entry credential address). */
   readonly address: string;
   /** Sign one V1 auth entry for `address`; returns the signed entry XDR. */
-  signAuthEntry(entryXdr: string, opts: { networkPassphrase: string; expirationLedger: number }): Promise<string>;
+  signAuthEntry(
+    entryXdr: string,
+    opts: { networkPassphrase: string; expirationLedger: number },
+  ): Promise<string>;
 }
 
 // Two ships:
@@ -91,7 +95,7 @@ interface SmartAccountX402Signer {
 
 Two independent protections, and the note is explicit that they are different:
 
-- **`maxAmount` (client-side):** the SDK refuses to *sign* a payment whose required amount exceeds the caller's ceiling — a guard against a malicious/misconfigured server asking for more than expected. Enforced in code, before signing. Cheap, immediate, but only as trustworthy as the client.
+- **`maxAmount` (client-side):** the SDK refuses to _sign_ a payment whose required amount exceeds the caller's ceiling — a guard against a malicious/misconfigured server asking for more than expected. Enforced in code, before signing. Cheap, immediate, but only as trustworthy as the client.
 - **The on-chain budget (policy contract):** the real enforcement. Even if client code is bypassed, the token-scoped spending-limit policy caps cumulative spend at `__check_auth` time. This is the honest guarantee (§17: "budgets enforced by the policy contract on-chain, not by client code").
 
 The client MUST NOT present `maxAmount` as "the budget." Doc + types will say: `maxAmount` is a per-request client guard; the durable budget is the on-chain policy attached to the session key.
@@ -117,14 +121,14 @@ Facade wiring copies `createPolicyFacade`: a `requireSession()` seam, a `createX
 
 ## 5. Module layout (new files in `vellar-sdk/src/`)
 
-| File | Contents |
-| ---- | -------- |
-| `x402-types.ts` | `PaymentRequirements`, `X402Response`, `SmartAccountX402Signer`, errors — domain types, no deps on the network. |
-| `x402-signer.ts` | The V1 auth-entry signing recipe (the spike's `signAuthEntryV1` + the smart-wallet signature-map builder), `createSessionKeySigner` + `createPasskeyX402Signer`. The one piece with real crypto. |
-| `x402-client.ts` | `createX402Client(deps)` — 402 decode, transfer build, sign via the injected signer, `PAYMENT-SIGNATURE` retry, `maxAmount` guard, settlement read. Structural deps (facilitator client, rpc, signer). |
-| `x402-facade.ts` | `createX402Facade` — thin handle glue mirroring `policy-facade.ts`. |
-| `client.ts` (edit) | compose `x402` into the handle, gated on `config.x402`. |
-| `index.ts` (edit) | export the new public symbols. |
+| File               | Contents                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `x402-types.ts`    | `PaymentRequirements`, `X402Response`, `SmartAccountX402Signer`, errors — domain types, no deps on the network.                                                                                        |
+| `x402-signer.ts`   | The V1 auth-entry signing recipe (the spike's `signAuthEntryV1` + the smart-wallet signature-map builder), `createSessionKeySigner` + `createPasskeyX402Signer`. The one piece with real crypto.       |
+| `x402-client.ts`   | `createX402Client(deps)` — 402 decode, transfer build, sign via the injected signer, `PAYMENT-SIGNATURE` retry, `maxAmount` guard, settlement read. Structural deps (facilitator client, rpc, signer). |
+| `x402-facade.ts`   | `createX402Facade` — thin handle glue mirroring `policy-facade.ts`.                                                                                                                                    |
+| `client.ts` (edit) | compose `x402` into the handle, gated on `config.x402`.                                                                                                                                                |
+| `index.ts` (edit)  | export the new public symbols.                                                                                                                                                                         |
 
 DRY: the V1 signing recipe currently lives (proven) in the spike's `pay.mjs`/`pay-policy.mjs`. It becomes `x402-signer.ts` — the spike scripts are throwaway; this is the real home. No logic is duplicated between them.
 
