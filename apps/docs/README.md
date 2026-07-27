@@ -16,6 +16,7 @@ tool (Docusaurus, VitePress, MkDocs, …).
 | [Core Flows](./core-flows.md)           | Wallet creation, signing, policies, cleanup, extension pairing — end to end |
 | [Security Model](./security-model.md)   | Passkeys, no-key-custody, origin permissions, no silent signing             |
 | [Policy Contract](./policy-contract.md) | The configurable spending-limit Soroban contract                            |
+| [x402 Agentic Payments](./x402.md)      | Paying HTTP-402 resources from a smart account under an on-chain budget      |
 
 ## Status
 

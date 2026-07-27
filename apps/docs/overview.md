@@ -19,6 +19,7 @@ key-pair account.
 | **Send & track payments**       | Web            | Build → review → passkey-sign → submit → track to finality, with fees sponsored.                   |
 | **Account policies**            | Web            | Author policies from templates (spending limit, multisig, allowlist), review, and deploy on-chain. |
 | **Configurable spending limit** | Web + contract | Deploy a per-account Soroban policy that enforces a user-chosen rolling-window spend cap.          |
+| **Agentic payments (x402)**     | SDK + contract | Pay HTTP-402 resources from a smart account via a scoped session key, bounded by an on-chain per-token budget — "give your agent a budget, not your keys." See [x402](./x402.md). |
 | **Account cleanup & merge**     | Web            | A guided planner that inspects a classic account, plans cleanup, and merges it — never one-click.  |
 | **dApp connection & signing**   | Extension      | Pair the extension as a device signer; approve dApp connections and transactions per-origin.       |
 | **Trust signals in signing**    | Extension      | The signing prompt decodes the transaction and flags value transfers subject to account policies.  |

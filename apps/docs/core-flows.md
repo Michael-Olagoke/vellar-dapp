@@ -126,3 +126,29 @@ to …"); the user approves; the device key signs.
 
 **Revocation:** remove the device signer on-chain from the web app's Settings —
 a remote kill. The pairing also auto-expires after 7 days.
+
+## 7. Pay an x402 resource under a budget (agentic payments)
+
+**Setup (one passkey approval):** the user grants an agent a budget — a scoped
+ed25519 **session key** is added as an on-chain signer whose `SignerLimits`
+require a **spending-limit policy** to co-sign any transfer. This reuses the same
+session-key mechanism as extension pairing (flow 6): a bounded, revocable signer,
+not a co-owner.
+
+**What happens (per payment, headless — no prompt):**
+
+1. The agent calls `vellar.x402.fetch(url, { maxAmount })`. The resource answers
+   `402` with payment requirements (asset, amount, recipient, network).
+2. The SDK builds the SEP-41 `transfer(from = smart account, …)`, signs the
+   wallet auth entry with the session key as **V1 credentials**, and retries with
+   the `PAYMENT-SIGNATURE` header.
+3. The facilitator **re-simulates** the transaction — which runs the account's
+   `__check_auth`, which runs the spending-limit **policy**. Under budget → it
+   settles on-chain and returns the unlocked resource + tx hash. Over budget (or
+   the wrong token) → the policy rejects it and the facilitator returns a
+   rejection; **no funds move**.
+
+**The guarantee:** the agent can spend only within its on-chain per-token budget.
+The client-side `maxAmount` is a convenience guard; the enforced cap is the
+policy contract. **Revocation:** remove the session signer on-chain from
+Settings, or let it expire. See [x402](./x402.md) for the full flow.
