@@ -1,11 +1,16 @@
 # Vellar Wallet
 
-Web-first Stellar smart wallet with a companion browser extension: passkey onboarding, smart-account policies, contract verification & trust signals, and account cleanup/merge tooling.
+![Vellar](apps/web/public/vellar.jpg)
 
-- **Spec:** [technical-doc.md](technical-doc.md) (authoritative) + [idea.md](idea.md) (detailed interfaces/APIs)
-- **Progress:** [BUILD-PLAN.md](BUILD-PLAN.md)
-- **Contributor/agent rules:** [CLAUDE.md](CLAUDE.md)
-- **Decisions:** [docs/decisions.md](docs/decisions.md)
+**Vellar** is a web-first Stellar smart wallet with a companion browser extension.
+Passkey onboarding (no seed phrases), programmable on-chain account policies,
+contract verification & trust signals, and account cleanup/merge tooling — plus
+agentic payments via [x402](https://x402.org), so an autonomous agent can spend
+under an on-chain budget without ever holding your keys.
+
+The SDK that powers Vellar is published separately as
+[`vellar-sdk`](https://github.com/Vellar-Wallet/vellar-sdk), with full docs at
+**[docs.vellar.xyz](https://docs.vellar.xyz)**.
 
 ## Layout
 
@@ -47,9 +52,14 @@ pnpm typecheck
 
 3. **Verify:** `curl localhost:4000/health` and open `http://localhost:3000`.
 
-Integration tests that hit a real database run against `vela_test` (seeded by
-the compose init script) when `TEST_DATABASE_URL` is set; otherwise they skip:
+Integration tests that hit a real database run against a local test DB (seeded
+by the compose init script) when `TEST_DATABASE_URL` is set; otherwise they
+skip. See `.env.example` for the expected connection string shape.
 
-```sh
-TEST_DATABASE_URL="postgres://vela:vela@localhost:5433/vela_test" pnpm test
-```
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
