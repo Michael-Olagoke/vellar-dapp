@@ -82,39 +82,9 @@ cargo test -p vela-spending-limit-policy   # unit tests (constructor validation,
 stellar contract build                     # optimized wasm
 ```
 
-## Token-scoped variant (per-token budgets)
-
-The base spending-limit contract sums **every** SEP-41 `transfer` into one
-allowance, regardless of which token moved — so a "$10" cap would also count XLM
-or any other token. That is fine for a single-asset account but **must not** back
-a per-token (e.g. USDC) budget, which is exactly what an [x402](./x402.md) agent
-budget needs.
-
-The **token-scoped** variant (`token-spending-limit`) changes one thing: the
-constructor takes a **bound token contract id**, and only that token's transfers
-count against the cap.
-
-```
-__constructor(wallet: Address, token: Address, daily_limit: i128, window_seconds: u64)
-```
-
-It is **fail-closed**: if any context in an invocation is a transfer of a token
-other than the bound one (or any non-transfer), the *whole* authorization is
-rejected — the policy never partially approves a transfer of a token it does not
-govern. An agent that needs two token budgets attaches two token-scoped policies;
-the smart wallet supports multiple required co-signers. Every other invariant of
-the base contract (single-tenant binding, cumulative rolling window, checked
-arithmetic, TTL renewal, deny-by-default, permissionless self-clean) is preserved
-verbatim.
-
-Deployed to testnet and proven end to end: a bound-token payment under budget
-settles, over budget is rejected, and a different token is rejected — all at the
-authorization layer.
-
 ## Status
 
 **Testnet only. Not yet audited for mainnet.** Mainnet use is gated on the
 smart-contract security-review checklist (see [Security Model](./security-model.md)).
-Both the base and token-scoped contracts are dependency-pinned to the audited
-passkey-kit contract workspace (soroban-sdk 27, `smart-wallet-interface` via a
-pinned commit) and built + verified through the canonical build image.
+Dependencies are pinned to the audited passkey-kit contract workspace
+(soroban-sdk 27, `smart-wallet-interface` via a pinned commit).
