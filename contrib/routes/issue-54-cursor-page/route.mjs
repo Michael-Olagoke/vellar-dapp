@@ -1,7 +1,7 @@
 // Mock GET route returning a page of sample items plus an opaque cursor
 // pointing at the next page. No chain or DB access.
 import http from "node:http";
-import { URL } from "node:url";
+import { pathToFileURL, URL } from "node:url";
 
 const ITEMS = [
   { id: "itm_01", label: "Coffee subscription" },
@@ -69,7 +69,9 @@ export function handleRequest({ query = {} } = {}) {
   };
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// pathToFileURL rather than a `file://` template: on Windows argv[1] is a
+// drive path, which does not compare equal to import.meta.url otherwise.
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
