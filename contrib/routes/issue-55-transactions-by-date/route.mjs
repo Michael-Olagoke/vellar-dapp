@@ -1,7 +1,7 @@
 // Mock GET route listing sample transactions filtered by a date range. No
 // chain or DB access.
 import http from "node:http";
-import { URL } from "node:url";
+import { pathToFileURL, URL } from "node:url";
 
 // Deliberately unsorted and spread across several months so range filtering
 // has something to actually do.
@@ -55,7 +55,9 @@ export function handleRequest({ query = {} } = {}) {
   return { status: 200, body: transactions };
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// pathToFileURL rather than a `file://` template: on Windows argv[1] is a
+// drive path, which does not compare equal to import.meta.url otherwise.
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
