@@ -24,6 +24,7 @@ export const grantHandler = (
 export const checkHandler = (
     req: { origin: string }, 
     res: any, 
+    
     simulatedTimeMs: number = Date.now()
 ) => {
     const record = database.get(req.origin);

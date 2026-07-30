@@ -10,6 +10,8 @@ const createMockResponse = () => {
     return res;
 };
 
+
+
 async function runSimulation() {
     const origin = 'https://dapp.vellar.io';
     const baseTimeMs = 1700000000000; // Arbitrary simulated starting epoch
