@@ -24,15 +24,17 @@ export const grantHandler = (
 export const checkHandler = (
     req: { origin: string }, 
     res: any, 
-    
+
     simulatedTimeMs: number = Date.now()
 ) => {
     const record = database.get(req.origin);
     
     if (!record) {
+        
         return res.status(404).json({ error: "No record found" });
     }
     if (record.status !== 'granted') {
+
         return res.status(403).json({ error: "Permission has not been granted" });
     }
 
