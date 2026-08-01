@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import {
+  ATTESTATION_REGISTRY_ID,
   DEFAULT_WINDOW_SECONDS,
   policyHash,
   SPENDING_POLICY_WASM_HASH,
   validateDefinition,
+  VERIFIED_RECIPIENT_WASM_HASH,
   xlmToStroops,
 } from "./templates";
 import type { PolicyDeployer } from "./deploy";
@@ -119,7 +121,7 @@ describe("Policy API", () => {
       kind: "policy-contract",
       wasmHash: SPENDING_POLICY_WASM_HASH,
     });
-    expect(res.json()).toHaveLength(5);
+    expect(res.json()).toHaveLength(6);
   });
 
   it("generate → review artifacts → GET → deploy records the deployment", async () => {
@@ -221,8 +223,44 @@ describe("POST /policies/:id/deploy-instance", () => {
     // The wallet + the user's chosen limit (100 XLM) reach the deployer.
     expect(deployInstance).toHaveBeenCalledWith({
       wallet: C1,
-      dailyLimitStroops: xlmToStroops("100").toString(),
-      windowSeconds: DEFAULT_WINDOW_SECONDS,
+      constructorArgs: {
+        dailyLimitStroops: xlmToStroops("100").toString(),
+        windowSeconds: DEFAULT_WINDOW_SECONDS,
+      },
+    });
+  });
+
+  it("verified_only: generate bakes the registry, deploy passes it to the deployer", async () => {
+    const { deployer, deployInstance } = stubDeployer();
+    const server = build(deployer);
+
+    const gen = await server.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: {
+        definition: { version: "1", type: "verified_only", owners: [C1] },
+        network: "testnet",
+      },
+    });
+    expect(gen.statusCode).toBe(201);
+    const policy = gen.json().policy as {
+      id: string;
+      manifest: { enforcement: { wasmHash: string; constructorArgs: { registry: string } } };
+    };
+    expect(policy.manifest.enforcement.wasmHash).toBe(VERIFIED_RECIPIENT_WASM_HASH);
+    expect(policy.manifest.enforcement.constructorArgs).toEqual({
+      registry: ATTESTATION_REGISTRY_ID,
+    });
+
+    const res = await server.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(deployInstance).toHaveBeenCalledWith({
+      wallet: C1,
+      constructorArgs: { registry: ATTESTATION_REGISTRY_ID },
     });
   });
 
@@ -342,8 +380,10 @@ describe("POST /policies/:id/simulate", () => {
     expect(res.json()).toEqual({ ok: true, minResourceFee: "12345" });
     expect(simulateInstance).toHaveBeenCalledWith({
       wallet: C1,
-      dailyLimitStroops: xlmToStroops("100").toString(),
-      windowSeconds: DEFAULT_WINDOW_SECONDS,
+      constructorArgs: {
+        dailyLimitStroops: xlmToStroops("100").toString(),
+        windowSeconds: DEFAULT_WINDOW_SECONDS,
+      },
     });
     // Simulation must never submit.
     expect(deployInstance).not.toHaveBeenCalled();

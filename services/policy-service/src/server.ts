@@ -143,8 +143,7 @@ export function buildServer(deps: PolicyServiceDeps = {}): FastifyInstance {
 
     const result = await deployer.simulateInstance({
       wallet: parsed.data.wallet,
-      dailyLimitStroops: enforcement.constructorArgs.dailyLimitStroops,
-      windowSeconds: enforcement.constructorArgs.windowSeconds,
+      constructorArgs: enforcement.constructorArgs,
     });
     return reply.send(result);
   });
@@ -184,8 +183,7 @@ export function buildServer(deps: PolicyServiceDeps = {}): FastifyInstance {
     try {
       result = await deployer.deployInstance({
         wallet: parsed.data.wallet,
-        dailyLimitStroops: enforcement.constructorArgs.dailyLimitStroops,
-        windowSeconds: enforcement.constructorArgs.windowSeconds,
+        constructorArgs: enforcement.constructorArgs,
       });
     } catch (err) {
       if (err instanceof PolicyDeployError) {

@@ -28,6 +28,26 @@ import type { PolicyDefinition } from "@vellar/types";
 export const SPENDING_POLICY_WASM_HASH =
   "0f6b858d61799a33efdc2303c60eb0c148fd2983b7d2336fc345b5492a24b791";
 
+/**
+ * VELA verified-recipient policy wasm (testnet). Built through the SAME
+ * canonical image (vela-verify:1.94.0), self-verified (clean rebuild
+ * byte-identical), uploaded 2026-08-01 with --optimize=false (tx 4602d65e…).
+ * `__constructor(wallet, registry)` binds each instance to one wallet and the
+ * attestation registry; `policy__` rejects any auth whose contexts invoke a
+ * contract without a live attestation (docs/design-provenance-gated-spending.md).
+ */
+export const VERIFIED_RECIPIENT_WASM_HASH =
+  "a57efbf969d6e574e2b40d98985a145fd87d1760224ef6d10e268ea1f6080960";
+
+/**
+ * The deployed AttestationRegistry instance (testnet, 2026-08-01), fed by the
+ * verification pipeline's attestor (worker-service). Baked into generated
+ * verified_only manifests the same way the wasm hashes are pinned: the
+ * registry an instance trusts is part of what the policy IS.
+ */
+export const ATTESTATION_REGISTRY_ID =
+  "CBZVS2ETJKCIMRRWUHTZFVMWDACJNYUZ54JIXUJCHXNBFNXELKTSWHGP";
+
 /** Stroops per XLM (7 decimals). */
 const STROOPS_PER_XLM = 10_000_000n;
 /** Default rolling window when a policy sets only a daily cap: 24h. */
@@ -60,9 +80,9 @@ export type Enforcement =
       kind: "policy-contract";
       wasmHash: string;
       /** Constructor args for the per-user instance, derived from the
-       * definition. Present once a spending-limit policy is generated. (Named
+       * definition/deployment. Present once a policy is generated. (Named
        * `constructorArgs`, not `constructor`, to avoid the reserved property.) */
-      constructorArgs?: SpendingConstructor;
+      constructorArgs?: SpendingConstructor | VerifiedRecipientConstructor;
     }
   | { kind: "signer-limits" }
   | { kind: "none" }
@@ -74,6 +94,13 @@ export type Enforcement =
 export interface SpendingConstructor {
   dailyLimitStroops: string;
   windowSeconds: number;
+}
+
+/** Immutable args for the verified-recipient contract's `__constructor`.
+ * `wallet` is filled in at deploy time; the registry is pinned at generate
+ * time (ATTESTATION_REGISTRY_ID). */
+export interface VerifiedRecipientConstructor {
+  registry: string;
 }
 
 export interface PolicyTemplate {
@@ -136,6 +163,16 @@ export const templates: PolicyTemplate[] = [
       allowlistedContracts: z.array(contractAddress).min(1),
     }),
     enforcement: { kind: "signer-limits" },
+  },
+  {
+    type: "verified_only",
+    title: "Verified contracts only",
+    description:
+      "The signer may only transact through contracts with verified (reproducible) source — enforced on-chain against the attestation registry. Verified means provenance, not audited or safe.",
+    schema: base.extend({
+      type: z.literal("verified_only"),
+    }),
+    enforcement: { kind: "policy-contract", wasmHash: VERIFIED_RECIPIENT_WASM_HASH },
   },
   {
     type: "timelock",
@@ -242,6 +279,11 @@ export function generatePolicy(
   let enforcement = template.enforcement;
   if (definition.type === "spending_limit" && enforcement.kind === "policy-contract") {
     enforcement = { ...enforcement, constructorArgs: deriveSpendingConstructor(definition) };
+  }
+  // Verified-only instances bind to the deployed attestation registry — pinned
+  // at generate time so the manifest fully determines the deploy.
+  if (definition.type === "verified_only" && enforcement.kind === "policy-contract") {
+    enforcement = { ...enforcement, constructorArgs: { registry: ATTESTATION_REGISTRY_ID } };
   }
 
   return {
