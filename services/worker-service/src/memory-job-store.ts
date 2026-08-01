@@ -15,6 +15,8 @@ interface Row {
   outputHash?: string;
   deployedHash?: string;
   log?: string;
+  /** When the record reached a terminal state — orders "latest per contract". */
+  completedAtMs?: number;
 }
 
 export interface MemoryJobStore extends VerificationJobStore {
@@ -52,6 +54,28 @@ export function createMemoryJobStore(): MemoryJobStore {
       row.outputHash = result.outputHash;
       row.deployedHash = result.deployedHash;
       row.log = result.log;
+      row.completedAtMs = Date.now();
+    },
+    async listLatestVerified(limit) {
+      // Latest terminal record per contract; include only when that latest is
+      // a verified run with a rebuilt hash (a newer failed run supersedes an
+      // older verified one — mirroring the pg DISTINCT ON semantics).
+      const latestByContract = new Map<string, Row>();
+      for (const row of rows.values()) {
+        if (row.status !== "verified" && row.status !== "failed") continue;
+        const current = latestByContract.get(row.job.contractId);
+        if (!current || (row.completedAtMs ?? 0) > (current.completedAtMs ?? 0)) {
+          latestByContract.set(row.job.contractId, row);
+        }
+      }
+      const result: Array<{ contractId: string; outputHash: string }> = [];
+      for (const row of latestByContract.values()) {
+        if (result.length >= limit) break;
+        if (row.status === "verified" && row.outputHash) {
+          result.push({ contractId: row.job.contractId, outputHash: row.outputHash });
+        }
+      }
+      return result;
     },
   };
 }

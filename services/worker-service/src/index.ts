@@ -6,6 +6,8 @@ import { configFromEnv, executorFromConfig } from "./config";
 import { createRpcArtifactResolver } from "./resolver";
 import { createPgJobStore } from "./pg-job-store";
 import { startWorkerLoop, type WorkerMetrics } from "./loop";
+import { createAttestor, type Attestor } from "./attestor";
+import { createRegistrySubmitter } from "./registry-submitter";
 
 // @vellar/worker-service — the deterministic build worker (technical-doc.md §8.4).
 //
@@ -82,6 +84,33 @@ await metricsApp.listen({
   host: "0.0.0.0",
 });
 
+// On-chain attestation mirror (design-provenance-gated-spending.md): enabled
+// only when both the attestor secret and the registry id are configured;
+// otherwise loudly disabled — verification keeps working either way.
+let attestor: Attestor | undefined;
+let sweepTimer: ReturnType<typeof setInterval> | undefined;
+if (config.attestorSecretKey && config.attestationRegistryId) {
+  attestor = createAttestor({
+    submitter: createRegistrySubmitter({
+      rpcUrl: config.rpcUrl,
+      networkPassphrase: config.networkPassphrase,
+      registryContractId: config.attestationRegistryId,
+      attestorSecretKey: config.attestorSecretKey,
+    }),
+    ttlLedgers: config.attestationTtlLedgers,
+    log,
+  });
+  log.info(`attestor enabled (registry=${config.attestationRegistryId}).`);
+  // Upgrade sweep: revoke attestations whose contract was upgraded or deleted.
+  const runSweep = () => attestor!.runUpgradeSweep(store, resolver);
+  sweepTimer = setInterval(runSweep, config.attestationSweepMs);
+  void runSweep();
+} else {
+  log.info(
+    "ATTESTOR_SECRET_KEY / ATTESTATION_REGISTRY_ID not set — on-chain attestation mirror DISABLED (verification unaffected).",
+  );
+}
+
 const loop = startWorkerLoop({
   store,
   executor,
@@ -89,12 +118,14 @@ const loop = startWorkerLoop({
   idleDelayMs: config.pollIdleMs,
   log,
   metrics,
+  attestor,
 });
 log.info(`build worker started (rpc=${config.rpcUrl}). Polling for submitted verifications.`);
 
 const shutdown = async () => {
   log.info("shutting down…");
   loop.stop();
+  if (sweepTimer) clearInterval(sweepTimer);
   await metricsApp.close();
   await pool.end();
   process.exit(0);

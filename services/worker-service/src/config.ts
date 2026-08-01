@@ -14,6 +14,15 @@ export interface WorkerRuntimeConfig {
   buildMemory: string | undefined;
   buildCpus: string | undefined;
   buildPidsLimit: number | undefined;
+  /** On-chain attestation mirror (design-provenance-gated-spending.md). BOTH
+   * must be set to enable; otherwise the attestor is disabled with a loud log. */
+  attestorSecretKey: string | undefined;
+  attestationRegistryId: string | undefined;
+  networkPassphrase: string;
+  /** Attestation lifetime in ledgers (default ~7 days at 5s close time). */
+  attestationTtlLedgers: number | undefined;
+  /** Upgrade-sweep interval (default 10 min). */
+  attestationSweepMs: number;
 }
 
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
@@ -30,6 +39,13 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerRunti
     buildMemory: env.VERIFY_BUILD_MEMORY || undefined,
     buildCpus: env.VERIFY_BUILD_CPUS || undefined,
     buildPidsLimit: env.VERIFY_BUILD_PIDS_LIMIT ? Number(env.VERIFY_BUILD_PIDS_LIMIT) : undefined,
+    attestorSecretKey: env.ATTESTOR_SECRET_KEY || undefined,
+    attestationRegistryId: env.ATTESTATION_REGISTRY_ID || undefined,
+    networkPassphrase: env.STELLAR_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015",
+    attestationTtlLedgers: env.ATTESTATION_TTL_LEDGERS
+      ? Number(env.ATTESTATION_TTL_LEDGERS)
+      : undefined,
+    attestationSweepMs: env.ATTESTATION_SWEEP_MS ? Number(env.ATTESTATION_SWEEP_MS) : 600_000,
   };
 }
 

@@ -29,4 +29,8 @@ export interface VerificationJobStore {
       log: string;
     },
   ): Promise<void>;
+  /** The attestor's upgrade-sweep watch list: per contract, the LATEST terminal
+   * record — included only when that latest run is `verified` (a later failed
+   * run supersedes an older verified one) and carries the rebuilt hash. */
+  listLatestVerified(limit: number): Promise<Array<{ contractId: string; outputHash: string }>>;
 }

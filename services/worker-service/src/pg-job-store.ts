@@ -73,5 +73,30 @@ export function createPgJobStore(db: NodePgDatabase): VerificationJobStore {
         .set({ status: result.status, updatedAt: now, record: updated })
         .where(eq(verificationRecords.id, recordId));
     },
+
+    async listLatestVerified(limit) {
+      // Latest terminal record per contract (DISTINCT ON + updated_at DESC),
+      // then keep only those whose latest run is verified with a rebuilt hash —
+      // a newer failed run supersedes an older verified one.
+      const rows = await db.execute(sql`
+        select contract_id, record
+        from (
+          select distinct on (contract_id) contract_id, status, record
+          from ${verificationRecords}
+          where status in ('verified', 'failed')
+          order by contract_id, updated_at desc
+        ) latest
+        where status = 'verified'
+        limit ${limit}
+      `);
+      const result: Array<{ contractId: string; outputHash: string }> = [];
+      for (const row of rows.rows as Array<{ contract_id: string; record: unknown }>) {
+        const record = row.record as VerificationRecordInternal;
+        if (record.outputHash) {
+          result.push({ contractId: row.contract_id, outputHash: record.outputHash });
+        }
+      }
+      return result;
+    },
   };
 }

@@ -72,6 +72,11 @@ function jobStoreOver(
       r.updatedAt = new Date().toISOString();
       await records.update(r);
     },
+    async listLatestVerified() {
+      // The attestor's sweep is out of scope for this pipeline e2e (covered by
+      // attestor.test.ts); this store never feeds one.
+      return [];
+    },
   };
 }
 
