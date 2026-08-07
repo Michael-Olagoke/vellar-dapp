@@ -18,6 +18,9 @@ export function LandingNav() {
           <Link href="/about" onClick={close}>
             About
           </Link>
+          <Link href="/#agents" onClick={close}>
+            x402
+          </Link>
           <Link href="/#faq" onClick={close}>
             FAQ
           </Link>

@@ -28,9 +28,14 @@ const features = [
     ),
   },
   {
-    title: "Agent payments (x402)",
-    body: "Give your AI agent a scoped key with an on-chain budget. It pays x402 APIs autonomously — and can never overspend.",
-    icon: <path d="M13 3L5 13h6l-1 8 8-10h-6l1-8z" />,
+    title: "Sponsored fees",
+    body: "Vellar sponsors network fees on everyday transactions — no need to hold XLM just to get started.",
+    icon: (
+      <>
+        <rect x="5" y="3" width="14" height="18" rx="2" />
+        <path d="M9 8h6M9 12h6M9 16h4" />
+      </>
+    ),
   },
   {
     title: "Passkey security",
@@ -78,6 +83,10 @@ const features = [
 
 const faqs = [
   {
+    q: "Can my AI agent spend from my wallet?",
+    a: "Yes — that's what agent keys are for. Mint your agent a scoped session key with an on-chain spending limit and it can pay x402-enabled APIs autonomously, no passkey prompt needed. The budget is enforced by a policy contract inside your wallet, not by the agent's code — go over it and the chain refuses to settle. Revoke the key at any time.",
+  },
+  {
     q: "Is Vellar custodial?",
     a: "No. Vellar is fully self-custodial — your account and keys live on Stellar and in your device's secure enclave. We never hold your funds or your passkeys.",
   },
@@ -92,10 +101,6 @@ const faqs = [
   {
     q: "What are programmable policies, exactly?",
     a: "On-chain rules enforced by the network: spending limits, required co-signers, time locks and allow-lists. They apply to every transaction automatically, so a compromised session still can't drain the account.",
-  },
-  {
-    q: "Can my AI agent spend from my wallet?",
-    a: "Yes — that's what agent keys are for. Mint your agent a scoped session key with an on-chain spending limit and it can pay x402-enabled APIs autonomously, no passkey prompt needed. The budget is enforced by a policy contract inside your wallet, not by the agent's code — go over it and the chain refuses to settle. Revoke the key at any time.",
   },
   {
     q: "Is it ready for teams and developers?",
@@ -119,14 +124,14 @@ export default function Landing() {
             <span className="pulse"></span> Stellar testnet · live
           </span>
           <h1>
-            Your Stellar wallet.
+            Give your <span className="g">agent</span> a budget,
             <br />
-            Secured by <span className="g">passkeys</span>, not seed phrases.
+            not your keys.
           </h1>
           <p className="hero-sub">
-            Vellar is the passkey-powered smart wallet for Stellar — programmable security, contract
-            verification, and trust signals on every transaction. Even your AI agent can spend from
-            it, under a budget enforced on-chain.
+            Vellar is building the agent-payments stack for Stellar on x402 — smart accounts that
+            pay HTTP-402 APIs autonomously, budgets enforced on-chain, and trust-ranked discovery.
+            Secured by passkeys, not seed phrases.
           </p>
           <div className="hero-cta">
             <Link href="/app" className="btn btn-signal btn-lg">
@@ -273,6 +278,62 @@ export default function Landing() {
         </div>
       </header>
 
+      {/* WHAT WE'RE BUILDING ON x402 */}
+      <section className="sec" id="agents">
+        <div className="wrap">
+          <div className="sec-head" style={{ marginBottom: 36 }}>
+            <div>
+              <span className="eyebrow">Building on x402</span>
+              <h2>The agent-payments stack for Stellar.</h2>
+            </div>
+            <p>
+              <a href="https://x402.org">x402</a> is the open protocol that turns HTTP 402 into
+              machine-payable APIs. We&apos;re building every layer of it on Stellar: the payer —
+              smart accounts with scoped agent keys — the settlement rails, and trust-ranked
+              discovery so agents pay the right services.
+            </p>
+          </div>
+          <div className="ext-steps">
+            <div className="ext-step">
+              <span className="ext-num mono">01</span>
+              <h4>Agent keys with on-chain budgets</h4>
+              <p>
+                One passkey tap mints your agent a scoped session key — locked to the tokens you
+                choose, capped by a spending-limit policy. The budget lives in a contract, not in
+                code the agent could bypass, and you can revoke the key remotely any time.
+              </p>
+            </div>
+            <div className="ext-step">
+              <span className="ext-num mono">02</span>
+              <h4>Autonomous payments via the SDK</h4>
+              <p>
+                The first x402 client built for Stellar smart accounts. One call handles the 402
+                challenge — sign headlessly, pay, get the resource. An over-budget payment fails
+                on-chain before any money moves.
+              </p>
+            </div>
+            <div className="ext-step">
+              <span className="ext-num mono">03</span>
+              <h4>Facilitator + trust-ranked Bazaar</h4>
+              <p>
+                Our open-source facilitator verifies and settles x402 payments — including
+                policy-governed smart accounts other facilitators reject — and its Bazaar lets
+                agents discover payable APIs ranked by real settlement data and contract
+                verification.
+              </p>
+            </div>
+          </div>
+          <div className="hero-cta" style={{ marginTop: 32 }}>
+            <a href="https://docs.vellar.xyz/docs/agent-keys" className="btn btn-dark">
+              Read the agent-keys guide
+            </a>
+            <a href="https://github.com/Vellar-Wallet/vellar-facilitator" className="btn btn-dark">
+              Facilitator on GitHub
+            </a>
+          </div>
+        </div>
+      </section>
+
       <EverydaySection />
 
       {/* PLATFORM CARDS */}
@@ -401,73 +462,18 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* WHAT WE'RE BUILDING ON x402 */}
-      <section className="sec" id="agents">
-        <div className="wrap">
-          <div className="sec-head" style={{ marginBottom: 36 }}>
-            <div>
-              <span className="eyebrow">Building on x402</span>
-              <h2>Give your agent a budget, not your keys.</h2>
-            </div>
-            <p>
-              We&apos;re building the agent-payments stack for Stellar on{" "}
-              <a href="https://x402.org">x402</a>, the open HTTP-402 payments protocol: smart
-              accounts that pay APIs autonomously under on-chain budgets, a facilitator that
-              settles those payments, and trust-ranked discovery so agents pay the right services.
-            </p>
-          </div>
-          <div className="ext-steps">
-            <div className="ext-step">
-              <span className="ext-num mono">01</span>
-              <h4>Agent keys with on-chain budgets</h4>
-              <p>
-                One passkey tap mints your agent a scoped session key — locked to the tokens you
-                choose, capped by a spending-limit policy. The budget lives in a contract, not in
-                code the agent could bypass, and you can revoke the key remotely any time.
-              </p>
-            </div>
-            <div className="ext-step">
-              <span className="ext-num mono">02</span>
-              <h4>Autonomous payments via the SDK</h4>
-              <p>
-                The first x402 client built for Stellar smart accounts. One call handles the 402
-                challenge — sign headlessly, pay, get the resource. An over-budget payment fails
-                on-chain before any money moves.
-              </p>
-            </div>
-            <div className="ext-step">
-              <span className="ext-num mono">03</span>
-              <h4>Facilitator + trust-ranked Bazaar</h4>
-              <p>
-                Our open-source facilitator verifies and settles x402 payments — including
-                policy-governed smart accounts other facilitators reject — and its Bazaar lets
-                agents discover payable APIs ranked by real settlement data and contract
-                verification.
-              </p>
-            </div>
-          </div>
-          <div className="hero-cta" style={{ marginTop: 32 }}>
-            <a href="https://docs.vellar.xyz/docs/agent-keys" className="btn btn-dark">
-              Read the agent-keys guide
-            </a>
-            <a href="https://github.com/Vellar-Wallet/vellar-facilitator" className="btn btn-dark">
-              Facilitator on GitHub
-            </a>
-          </div>
-        </div>
-      </section>
-
       {/* FEATURE GRID */}
       <section className="sec" id="features">
         <div className="wrap">
           <div className="sec-head" style={{ marginBottom: 36 }}>
             <div>
-              <span className="eyebrow">What you get</span>
-              <h2>Security that runs on-chain.</h2>
+              <span className="eyebrow">Wallet services</span>
+              <h2>Everything a smart wallet should do.</h2>
             </div>
             <p>
-              Everything is self-custodial and yours. Vellar layers modern auth and programmable
-              guardrails over your Stellar account — no custody, no compromises.
+              Agents are only half the story. Vellar is a full self-custodial smart wallet for
+              people too — passkeys, programmable policies and trust signals layered over your
+              Stellar account. No custody, no compromises.
             </p>
           </div>
           <div className="fgrid">
@@ -531,8 +537,8 @@ export default function Landing() {
             <span>SDK</span>
           </h2>
           <p>
-            Add passkey login and a Stellar smart wallet to your app in minutes — self-custodial,
-            fee-sponsored, no seed phrases.
+            Add passkey login, a Stellar smart wallet and x402 agent payments to your app in
+            minutes — self-custodial, fee-sponsored, no seed phrases.
           </p>
           <div className="hero-cta">
             <a href="https://docs.vellar.xyz/" className="btn btn-glass btn-lg">
@@ -553,8 +559,8 @@ export default function Landing() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo-light.png" alt="Vellar" />
               <p>
-                The passkey-powered smart wallet for Stellar. Programmable security and trust
-                signals for everyday users, developers and teams.
+                The agent-payments stack for Stellar, built on x402 — passkey smart wallets,
+                programmable policies and trust signals, for people and their agents.
               </p>
             </div>
             <div className="foot-cols">
