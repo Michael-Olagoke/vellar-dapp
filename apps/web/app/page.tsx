@@ -520,8 +520,8 @@ export default function Landing() {
             <span>SDK</span>
           </h2>
           <p>
-            Add passkey login, a Stellar smart wallet and x402 agent payments to your app in
-            minutes — self-custodial, fee-sponsored, no seed phrases.
+            Add passkey login, a Stellar smart wallet and x402 agent payments to your app in minutes
+            — self-custodial, fee-sponsored, no seed phrases.
           </p>
           <div className="hero-cta">
             <a href="https://docs.vellar.xyz/" className="btn btn-glass btn-lg">

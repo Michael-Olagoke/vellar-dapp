@@ -25,7 +25,12 @@ export interface RegistrySubmitterOptions {
   /** Injected for tests; defaults to a real rpc.Server. */
   server?: Pick<
     rpc.Server,
-    "getAccount" | "simulateTransaction" | "prepareTransaction" | "sendTransaction" | "getTransaction" | "getLatestLedger"
+    | "getAccount"
+    | "simulateTransaction"
+    | "prepareTransaction"
+    | "sendTransaction"
+    | "getTransaction"
+    | "getLatestLedger"
   >;
 }
 
@@ -48,7 +53,9 @@ export function createRegistrySubmitter(options: RegistrySubmitterOptions): Atte
     prepared.sign(keypair);
     const sent = await server.sendTransaction(prepared);
     if (sent.status === "ERROR") {
-      throw new Error(`registry ${method} submission rejected: ${JSON.stringify(sent.errorResult)}`);
+      throw new Error(
+        `registry ${method} submission rejected: ${JSON.stringify(sent.errorResult)}`,
+      );
     }
 
     for (let i = 0; i < 30; i++) {

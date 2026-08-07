@@ -45,8 +45,7 @@ export const VERIFIED_RECIPIENT_WASM_HASH =
  * verified_only manifests the same way the wasm hashes are pinned: the
  * registry an instance trusts is part of what the policy IS.
  */
-export const ATTESTATION_REGISTRY_ID =
-  "CBZVS2ETJKCIMRRWUHTZFVMWDACJNYUZ54JIXUJCHXNBFNXELKTSWHGP";
+export const ATTESTATION_REGISTRY_ID = "CBZVS2ETJKCIMRRWUHTZFVMWDACJNYUZ54JIXUJCHXNBFNXELKTSWHGP";
 
 /** Stroops per XLM (7 decimals). */
 const STROOPS_PER_XLM = 10_000_000n;

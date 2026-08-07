@@ -101,7 +101,10 @@ export function createAttestor(deps: AttestorDeps): Attestor {
         }
       } catch (err) {
         metrics.attestation("error");
-        log.error(`attestor: mirroring outcome for ${contractId} failed (pipeline unaffected)`, err);
+        log.error(
+          `attestor: mirroring outcome for ${contractId} failed (pipeline unaffected)`,
+          err,
+        );
       }
     },
 

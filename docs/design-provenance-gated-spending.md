@@ -16,12 +16,12 @@ provenance.
 
 Every piece exists in Vellar already; only the combination is new:
 
-| Existing asset | Role here |
-| --- | --- |
-| Contract-verification pipeline (byte-for-byte reproducible container builds, deployed + proven) | Source of truth feeding the on-chain attestation registry |
-| Policy contracts (`spending-limit`, `token-spending-limit`) proven through x402 | Skeleton and invariants for the new policy |
-| Smart-wallet `SignerLimits` multi-policy co-signing (passkey-kit) | Lets budget + provenance policies compose with no wallet changes |
-| Vellar Facilitator + Bazaar (live on testnet) | The only party that sees every settlement → reputation ground truth; the raised fee ceiling makes stacked-policy payments settleable at all |
+| Existing asset                                                                                  | Role here                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract-verification pipeline (byte-for-byte reproducible container builds, deployed + proven) | Source of truth feeding the on-chain attestation registry                                                                                   |
+| Policy contracts (`spending-limit`, `token-spending-limit`) proven through x402                 | Skeleton and invariants for the new policy                                                                                                  |
+| Smart-wallet `SignerLimits` multi-policy co-signing (passkey-kit)                               | Lets budget + provenance policies compose with no wallet changes                                                                            |
+| Vellar Facilitator + Bazaar (live on testnet)                                                   | The only party that sees every settlement → reputation ground truth; the raised fee ceiling makes stacked-policy payments settleable at all |
 
 Honesty bar carried over from the verification work, non-negotiable:
 **verified ≠ safe.** Verified means reproducible, attributable, inspectable
@@ -86,11 +86,11 @@ policy__(env, source, signer, contexts: Vec<Context>) {
 ```
 
 **Exact semantics (state them, don't oversell):** the policy gates the
-*contracts the agent's auth entries invoke* — the token contract in a
+_contracts the agent's auth entries invoke_ — the token contract in a
 transfer, and any other Soroban contract touched. It does **not** verify
 the human/classic-account recipient of funds (`payTo` is often a G-account
-with no code). The honest claim: *an agent constrained by this policy
-cannot transact through unverified code* — no fake-token transfers, no
+with no code). The honest claim: _an agent constrained by this policy
+cannot transact through unverified code_ — no fake-token transfers, no
 calls into unattested contracts. Seller-level trust is the facilitator
 layer's job (Component 4).
 
@@ -104,7 +104,7 @@ budget and provenance compose with zero wallet-contract changes.
 ## Component 3 — Attestor worker (verification-service extension)
 
 - On `VerificationRecord` → `verified`: submit `registry.upsert(contract,
-  wasm_hash, now + TTL)`, sponsor-funded through the existing submission
+wasm_hash, now + TTL)`, sponsor-funded through the existing submission
   plumbing.
 - Watch job: poll RPC for the current `executable.wasm_hash` of attested
   contracts (the resolver already reads this); on change or failed
@@ -141,7 +141,7 @@ code dependency between repos.
    attestation, and Soroban gives a policy no host function to read
    another contract's current wasm hash on-chain. Mitigations, layered:
    short attestation TTLs (staleness window ≤ expiry), the attestor's
-   revoke-on-upgrade watch, and the facilitator's *live* hash check at
+   revoke-on-upgrade watch, and the facilitator's _live_ hash check at
    verify time (off-chain, so it can). Residual: payments in the minutes
    between an upgrade and revocation. State it in every surface that
    claims enforcement.
