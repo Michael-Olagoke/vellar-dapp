@@ -812,19 +812,17 @@ a {
   border-radius: 999px;
   padding: 8px 8px 8px 20px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-  /* Size to content (not a fixed width) so the logo + links + button always
-     fit without squeezing the logo. Cap the width so it stays a centered pill. */
-  width: auto;
-  max-width: min(100%, 720px);
+  /* Wide centered pill: logo left, links center, button right. Caps at 880px
+     and shrinks with the viewport; below 900px the mobile rules take over. */
+  width: min(100%, 880px);
+  justify-content: space-between;
 }
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-  /* Breathing room between the logo and the nav links — ~3em on desktop,
-     scaling down gracefully on tighter widths so nothing overflows. */
-  margin-right: clamp(1em, 3vw, 3em);
+  /* Distribution comes from the nav's space-between, not a fixed margin. */
 }
 .brand img {
   height: 40px;
