@@ -28,19 +28,14 @@ const features = [
     ),
   },
   {
-    title: "Biometric login",
-    body: "Unlock with Face ID, Touch ID or a security key. Keys live in your device's secure enclave.",
-    icon: <path d="M9 11a4 4 0 118 0c0 3-3 4-3 4M13 20h.01M12 3a9 9 0 100 18" />,
+    title: "Agent payments (x402)",
+    body: "Give your AI agent a scoped key with an on-chain budget. It pays x402 APIs autonomously — and can never overspend.",
+    icon: <path d="M13 3L5 13h6l-1 8 8-10h-6l1-8z" />,
   },
   {
-    title: "Zero seed phrases",
-    body: "Nothing to write down, nothing to leak. Register multiple passkeys across your devices.",
-    icon: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 7v10M9.5 9.5c0-1 1-1.5 2.5-1.5s2.5.7 2.5 1.7c0 2-5 1.3-5 3.3 0 1 1 1.7 2.5 1.7s2.5-.5 2.5-1.5" />
-      </>
-    ),
+    title: "Passkey security",
+    body: "Unlock with Face ID, Touch ID or a security key. Keys live in your device's secure enclave — nothing to write down, nothing to leak.",
+    icon: <path d="M9 11a4 4 0 118 0c0 3-3 4-3 4M13 20h.01M12 3a9 9 0 100 18" />,
   },
   {
     title: "Safe account cleanup",
@@ -99,6 +94,10 @@ const faqs = [
     a: "On-chain rules enforced by the network: spending limits, required co-signers, time locks and allow-lists. They apply to every transaction automatically, so a compromised session still can't drain the account.",
   },
   {
+    q: "Can my AI agent spend from my wallet?",
+    a: "Yes — that's what agent keys are for. Mint your agent a scoped session key with an on-chain spending limit and it can pay x402-enabled APIs autonomously, no passkey prompt needed. The budget is enforced by a policy contract inside your wallet, not by the agent's code — go over it and the chain refuses to settle. Revoke the key at any time.",
+  },
+  {
     q: "Is it ready for teams and developers?",
     a: "Yes. Teams get multi-signer policies and shared controls; developers get an SDK, contract-verification tooling and the extension's connect API.",
   },
@@ -126,8 +125,8 @@ export default function Landing() {
           </h1>
           <p className="hero-sub">
             Vellar is the passkey-powered smart wallet for Stellar — programmable security, contract
-            verification, and trust signals on every transaction. Web-first, with a companion
-            browser extension.
+            verification, and trust signals on every transaction. Even your AI agent can spend from
+            it, under a budget enforced on-chain.
           </p>
           <div className="hero-cta">
             <Link href="/app" className="btn btn-signal btn-lg">
@@ -348,6 +347,10 @@ export default function Landing() {
                     <span className="mono">await vellar.pay()</span>
                     <b style={{ color: "var(--signal)" }}>✓ sent</b>
                   </div>
+                  <div className="mr">
+                    <span className="mono">await vellar.x402.fetch(url)</span>
+                    <b style={{ color: "var(--signal)" }}>✓ paid</b>
+                  </div>
                 </div>
               </div>
             </div>
@@ -392,6 +395,49 @@ export default function Landing() {
               <p>
                 Every transaction is decoded and shown before you approve. Your spending limits and
                 policies are enforced on-chain — the extension can&apos;t bypass them.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* AGENT PAYMENTS (x402) */}
+      <section className="sec" id="agents">
+        <div className="wrap">
+          <div className="sec-head" style={{ marginBottom: 36 }}>
+            <div>
+              <span className="eyebrow">Agentic payments</span>
+              <h2>Give your agent a budget, not your keys.</h2>
+            </div>
+            <p>
+              Vellar smart accounts pay x402 (HTTP-402) APIs autonomously. Mint your agent a scoped
+              session key with an on-chain spending limit — the budget lives in a policy contract,
+              not in code the agent could bypass.
+            </p>
+          </div>
+          <div className="ext-steps">
+            <div className="ext-step">
+              <span className="ext-num mono">01</span>
+              <h4>Mint a scoped key</h4>
+              <p>
+                One passkey tap adds an agent key to your wallet — locked to the tokens you choose,
+                capped by a spending-limit policy, with optional expiry.
+              </p>
+            </div>
+            <div className="ext-step">
+              <span className="ext-num mono">02</span>
+              <h4>Your agent pays as it works</h4>
+              <p>
+                The SDK&apos;s x402 client handles 402 challenges transparently — discover a paid
+                API, sign the payment headlessly, get the resource. No human in the loop.
+              </p>
+            </div>
+            <div className="ext-step">
+              <span className="ext-num mono">03</span>
+              <h4>The chain enforces the budget</h4>
+              <p>
+                An over-budget payment fails on-chain before any money moves. Pair a verified-only
+                policy to block unverified contracts — and revoke the key remotely any time.
               </p>
             </div>
           </div>
@@ -503,6 +549,7 @@ export default function Landing() {
                 <h4>Product</h4>
                 <Link href="/app">Wallet</Link>
                 <a href="#extension">Extension</a>
+                <a href="#agents">Agent payments</a>
                 <a href="#faq">FAQ</a>
               </div>
               <div className="foot-col">
@@ -522,7 +569,7 @@ export default function Landing() {
           </div>
           <div className="foot-bot">
             <span>© 2026 Vellar · Built on Stellar</span>
-            <span className="mono">passkeys · policies · trust</span>
+            <span className="mono">passkeys · policies · trust · agents</span>
           </div>
         </div>
       </footer>
