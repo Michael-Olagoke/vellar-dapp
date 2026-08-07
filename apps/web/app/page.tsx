@@ -401,45 +401,58 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* AGENT PAYMENTS (x402) */}
+      {/* WHAT WE'RE BUILDING ON x402 */}
       <section className="sec" id="agents">
         <div className="wrap">
           <div className="sec-head" style={{ marginBottom: 36 }}>
             <div>
-              <span className="eyebrow">Agentic payments</span>
+              <span className="eyebrow">Building on x402</span>
               <h2>Give your agent a budget, not your keys.</h2>
             </div>
             <p>
-              Vellar smart accounts pay x402 (HTTP-402) APIs autonomously. Mint your agent a scoped
-              session key with an on-chain spending limit — the budget lives in a policy contract,
-              not in code the agent could bypass.
+              We&apos;re building the agent-payments stack for Stellar on{" "}
+              <a href="https://x402.org">x402</a>, the open HTTP-402 payments protocol: smart
+              accounts that pay APIs autonomously under on-chain budgets, a facilitator that
+              settles those payments, and trust-ranked discovery so agents pay the right services.
             </p>
           </div>
           <div className="ext-steps">
             <div className="ext-step">
               <span className="ext-num mono">01</span>
-              <h4>Mint a scoped key</h4>
+              <h4>Agent keys with on-chain budgets</h4>
               <p>
-                One passkey tap adds an agent key to your wallet — locked to the tokens you choose,
-                capped by a spending-limit policy, with optional expiry.
+                One passkey tap mints your agent a scoped session key — locked to the tokens you
+                choose, capped by a spending-limit policy. The budget lives in a contract, not in
+                code the agent could bypass, and you can revoke the key remotely any time.
               </p>
             </div>
             <div className="ext-step">
               <span className="ext-num mono">02</span>
-              <h4>Your agent pays as it works</h4>
+              <h4>Autonomous payments via the SDK</h4>
               <p>
-                The SDK&apos;s x402 client handles 402 challenges transparently — discover a paid
-                API, sign the payment headlessly, get the resource. No human in the loop.
+                The first x402 client built for Stellar smart accounts. One call handles the 402
+                challenge — sign headlessly, pay, get the resource. An over-budget payment fails
+                on-chain before any money moves.
               </p>
             </div>
             <div className="ext-step">
               <span className="ext-num mono">03</span>
-              <h4>The chain enforces the budget</h4>
+              <h4>Facilitator + trust-ranked Bazaar</h4>
               <p>
-                An over-budget payment fails on-chain before any money moves. Pair a verified-only
-                policy to block unverified contracts — and revoke the key remotely any time.
+                Our open-source facilitator verifies and settles x402 payments — including
+                policy-governed smart accounts other facilitators reject — and its Bazaar lets
+                agents discover payable APIs ranked by real settlement data and contract
+                verification.
               </p>
             </div>
+          </div>
+          <div className="hero-cta" style={{ marginTop: 32 }}>
+            <a href="https://docs.vellar.xyz/docs/agent-keys" className="btn btn-dark">
+              Read the agent-keys guide
+            </a>
+            <a href="https://github.com/Vellar-Wallet/vellar-facilitator" className="btn btn-dark">
+              Facilitator on GitHub
+            </a>
           </div>
         </div>
       </section>
