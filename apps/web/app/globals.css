@@ -33,12 +33,9 @@
   --neo-surface: #0e1512;
   --neo-light: rgba(62, 230, 173, 0.06);
   --neo-shadow: rgba(0, 0, 0, 0.66);
-  --neo-raised:
-    -6px -6px 16px var(--neo-light), 8px 8px 20px var(--neo-shadow);
-  --neo-raised-sm:
-    -3px -3px 8px var(--neo-light), 4px 4px 10px var(--neo-shadow);
-  --neo-inset:
-    inset 4px 4px 10px var(--neo-shadow), inset -4px -4px 10px var(--neo-light);
+  --neo-raised: -6px -6px 16px var(--neo-light), 8px 8px 20px var(--neo-shadow);
+  --neo-raised-sm: -3px -3px 8px var(--neo-light), 4px 4px 10px var(--neo-shadow);
+  --neo-inset: inset 4px 4px 10px var(--neo-shadow), inset -4px -4px 10px var(--neo-light);
 }
 
 /* Light theme — flips surfaces/text; signal green stays the accent. The
@@ -62,12 +59,9 @@ html[data-theme="light"] {
   --neo-surface: #f4f8f6;
   --neo-light: rgba(255, 255, 255, 0.9);
   --neo-shadow: rgba(6, 10, 9, 0.14);
-  --neo-raised:
-    -6px -6px 16px var(--neo-light), 8px 8px 20px var(--neo-shadow);
-  --neo-raised-sm:
-    -3px -3px 8px var(--neo-light), 4px 4px 10px var(--neo-shadow);
-  --neo-inset:
-    inset 4px 4px 10px var(--neo-shadow), inset -4px -4px 10px var(--neo-light);
+  --neo-raised: -6px -6px 16px var(--neo-light), 8px 8px 20px var(--neo-shadow);
+  --neo-raised-sm: -3px -3px 8px var(--neo-light), 4px 4px 10px var(--neo-shadow);
+  --neo-inset: inset 4px 4px 10px var(--neo-shadow), inset -4px -4px 10px var(--neo-light);
 }
 
 /* ---- App shell layout (responsive) ----
@@ -1776,7 +1770,9 @@ footer.site {
   font-size: 14px;
   font-weight: 500;
   color: var(--muted);
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 .docs-nav-link:hover {
   color: var(--ink);
@@ -1946,7 +1942,9 @@ footer.site {
   padding: 16px 20px;
   border-radius: 16px;
   min-width: 180px;
-  transition: transform 0.12s, box-shadow 0.2s;
+  transition:
+    transform 0.12s,
+    box-shadow 0.2s;
 }
 .docs-pager-link:hover {
   transform: translateY(-2px);
