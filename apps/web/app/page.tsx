@@ -148,129 +148,112 @@ export default function Landing() {
           <div className="stage-mask">
             <div className="pcard swap">
               <div className="pc-top">
-                <span>← Swap</span>
-                <span className="pc-dot">⇄</span>
+                <span>← Agent key</span>
+                <span className="pc-dot">◇</span>
               </div>
               <div className="field">
-                <div className="lbl">YOU SELL</div>
+                <div className="lbl">AGENT</div>
                 <div className="row">
-                  <span className="amt">0</span>
-                  <span className="token">
-                    <i></i>XLM ▾
+                  <span className="amt" style={{ fontSize: 20 }}>
+                    research-bot
                   </span>
-                </div>
-                <div className="sub">
-                  <span>$0.00</span>
-                  <span>1691.69 XLM</span>
-                </div>
-              </div>
-              <div className="field">
-                <div className="lbl">YOU RECEIVE</div>
-                <div className="row">
-                  <span className="amt">0</span>
                   <span className="token usdc">
                     <i></i>USDC ▾
                   </span>
                 </div>
                 <div className="sub">
-                  <span>$0.00</span>
-                  <span>500.00 USDC</span>
+                  <span>session key GDW3…K7QP</span>
+                  <span>expires in 7d</span>
+                </div>
+              </div>
+              <div className="field">
+                <div className="lbl">BUDGET USED</div>
+                <div className="row">
+                  <span className="amt">3.20</span>
+                  <span className="token usdc">
+                    <i></i>/ 25 USDC
+                  </span>
+                </div>
+                <div className="sub">
+                  <span>12 payments</span>
+                  <span>enforced on-chain</span>
                 </div>
               </div>
               <div className="chips">
-                <b>25%</b>
-                <b>50%</b>
-                <b className="on">75%</b>
-                <b>Max</b>
+                <b className="on">Spend limit</b>
+                <b className="on">Verified only</b>
+                <b>Revoke</b>
               </div>
             </div>
 
             <div className="pcard dash">
               <div className="pc-top">
                 <span className="pc-dot">⋯</span>
-                <span className="pc-dot">⧉</span>
+                <span className="pc-dot">⚡</span>
               </div>
-              <div className="acct">Account 1 ▾</div>
-              <div className="bal">$1,305.13</div>
-              <div className="actions" style={{ marginBottom: 20 }}>
-                <div className="a">
-                  <i>+</i>Add
+              <div className="acct">research-bot · autonomous ▾</div>
+              <div className="bal">402 → 200</div>
+              <div className="miniui" style={{ marginBottom: 4 }}>
+                <div className="mr">
+                  <span className="mono">GET /v1/research</span>
+                  <b style={{ color: "var(--negative)" }}>402</b>
                 </div>
-                <div className="a">
-                  <i>↑</i>Send
+                <div className="mr">
+                  <span className="mono">price</span>
+                  <b>0.10 USDC</b>
                 </div>
-                <div className="a">
-                  <i>⇄</i>Swap
+                <div className="mr">
+                  <span className="mono">policy check</span>
+                  <b style={{ color: "var(--signal)" }}>✓ under budget</b>
                 </div>
-                <div className="a">
-                  <i>⧉</i>Copy
+                <div className="mr">
+                  <span className="mono">PAYMENT-SIGNATURE</span>
+                  <b style={{ color: "var(--signal)" }}>✓ signed</b>
                 </div>
-              </div>
-              <div className="tabs" style={{ marginBottom: 4 }}>
-                <span>Tokens</span>
-                <span className="off">Policies</span>
-              </div>
-              <div className="tokrow">
-                <div className="ti"></div>
-                <div className="tn">
-                  <b>Stellar Lumens</b>
-                  <span>1691.69 XLM</span>
-                </div>
-                <div className="tv">
-                  <b>$654.68</b>
-                  <span>+3.14%</span>
-                </div>
-              </div>
-              <div className="tokrow usdc">
-                <div className="ti"></div>
-                <div className="tn">
-                  <b>USD Coin</b>
-                  <span>345.34 USDC</span>
-                </div>
-                <div className="tv">
-                  <b>$345.34</b>
-                  <span>+0.00%</span>
+                <div className="mr">
+                  <span className="mono">settled on-chain</span>
+                  <b style={{ color: "var(--signal)" }}>200 OK</b>
                 </div>
               </div>
             </div>
 
             <div className="pcard trend">
               <div className="pc-top">
-                <span>Trust center</span>
-                <span className="pc-dot">◇</span>
+                <span>Bazaar</span>
+                <span className="pc-dot">◎</span>
               </div>
               <div className="promo">
                 <div className="pv"></div>
-                <span className="verified">✓ Contract verified</span>
+                <span className="verified">✓ Trust-ranked</span>
                 <div>
-                  <b>Blend · Lending</b>
-                  <div className="pt">POLICY: SPEND LIMIT OK</div>
+                  <b>Research API</b>
+                  <div className="pt">0.10 USDC / CALL · VERIFIED</div>
                 </div>
               </div>
               <div className="rlist">
                 <div className="rrow">
                   <div className="ri"></div>
                   <div className="rn">
-                    <b>Allbridge</b>
-                    <span>Bridge · verified</span>
+                    <b>Weather API</b>
+                    <span>0.05 USDC · verified</span>
                   </div>
-                  <span className="open">Open</span>
+                  <span className="open">Pay</span>
                 </div>
                 <div className="rrow">
                   <div className="ri"></div>
                   <div className="rn">
-                    <b>Lumenswap</b>
-                    <span>Exchange · verified</span>
+                    <b>Translate API</b>
+                    <span>0.02 USDC · verified</span>
                   </div>
-                  <span className="open">Open</span>
+                  <span className="open">Pay</span>
                 </div>
                 <div className="rrow">
                   <div className="ri"></div>
                   <div className="rn">
-                    <b>Litemint</b>
-                    <span>Collectibles</span>
+                    <b>GPU Inference</b>
+                    <span>0.25 USDC · 1.2k settlements</span>
                   </div>
-                  <span className="open">Open</span>
+                  <span className="open">Pay</span>
                 </div>
               </div>
             </div>
