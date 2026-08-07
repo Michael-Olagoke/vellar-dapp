@@ -4,10 +4,24 @@ import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
 import "./globals.css";
 
+const title = "Vellar — the agent-payments stack for Stellar, built on x402";
+const description =
+  "Give your agent a budget, not your keys. Smart accounts that pay x402 APIs autonomously, with budgets enforced on-chain — on a passkey smart wallet with programmable policies and contract trust signals. No seed phrases.";
+
 export const metadata: Metadata = {
-  title: "Vellar — the passkey smart wallet for Stellar",
-  description:
-    "Web-first Stellar smart wallet: passkey onboarding, programmable account policies, contract trust signals, and account lifecycle tooling.",
+  title,
+  description,
+  openGraph: {
+    title,
+    description,
+    siteName: "Vellar",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title,
+    description,
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
