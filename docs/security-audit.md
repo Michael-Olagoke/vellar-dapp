@@ -619,11 +619,15 @@ The suite is green only because `scope.test.ts` builds solely V1 / source-accoun
 path is never exercised (see the fixture-defect note in RA notes). The identical V1-only filter in
 `tx-signer.ts:101` means the extension signer would skip the real V2 entries and sign nothing.
 
-> **Status (RA-1): OPEN — hard mainnet blocker AND live testnet break.** Fix must match
-> `sorobanCredentialsAddressV2` and `sorobanCredentialsAddressWithDelegates`, extract the address
-> from each variant, in **both** `scope.ts` and `tx-signer.ts`; add a mixed-V1+V2 bypass test; and
-> derive fixtures from passkey-kit's actual signing path so a future credential-shape change breaks
-> the test rather than hiding behind it.
+> **Status (RA-1): CLOSED.** `scope.ts` and `tx-signer.ts` now resolve the `SorobanAddressCredentials`
+> across **all three** address-bound arms (`sorobanCredentialsAddress` V1, `sorobanCredentialsAddressV2`,
+> `sorobanCredentialsAddressWithDelegates` → `.addressCredentials()`) and read `.address()` uniformly;
+> source-account is skipped. Fixtures are now kit-shaped: the test builders default to **V2** (the real
+> signer output — `toAddressBoundCredentials` upgrades V1 in place) and parametrize over v1/v2/delegates,
+> so a V1-only regression fails immediately. `scope.test.ts` adds the mixed V1(known)+V2(attacker) bypass
+> case at both the extract and `assertScopedToKnownWallets` levels (the attacker V2 leg is now surfaced
+> and rejected); `tx-signer.test.ts` asserts each variant is signed. 13 scope tests + 62 extension tests
+> pass; both packages typecheck.
 
 ### RA-2 — Spend-budget conditional INSERT is not atomic under READ COMMITTED 🔴 High `[my code]`
 
@@ -648,7 +652,7 @@ real Postgres.
 
 > **Status (RA-2): OPEN — hard mainnet blocker.** Serialize the check+insert (recommend a unique
 > per-`(line,network,window)` counter row updated with `… ON CONFLICT DO UPDATE … WHERE new_total <=
-> max`, or `pg_advisory_xact_lock(line,network)` wrapping check+insert in one tx, or SERIALIZABLE +
+max`, or `pg_advisory_xact_lock(line,network)` wrapping check+insert in one tx, or SERIALIZABLE +
 > retry). Then **un-skip** the concurrency test and stand up Postgres in CI so the guarantee is
 > actually exercised — a guarantee that only holds when a local env var is set is not a guarantee.
 
@@ -735,7 +739,8 @@ emits IPv4-mapped answers in the dotted form the regex does catch. Latent defens
 defends only a hypothetical future refactor that strips brackets before the literal check.
 
 > **Status (RA-7): OPEN (latent).** Canonicalize IPv6 to bytes and range-check embedded IPv4-mapped
-> + NAT64 rather than string-prefix matching. Low urgency; no live path.
+>
+> - NAT64 rather than string-prefix matching. Low urgency; no live path.
 
 ### RA-8 — Audit hygiene: M3 / M4 / M5(deferral) / M8 / M9 are **not** code-fixed closures ℹ️ Info
 
@@ -757,11 +762,11 @@ credential fixtures, so the suite validated the V1-only bug instead of catching 
 XDR-decoding assertion added in remediation for the same pattern (does the fixture match what
 `passkey-kit@0.14.0` really produces, or what the implementation happens to parse?):
 
-| Remediation | Fixture site | Verdict | Kit-shape change that slips past |
-| --- | --- | --- | --- |
-| **FIX 2** derivation gate | `derivation.test.ts:17` (pinned deployer, verified against the kit) + live `deriveWalletContractId` | **KIT-DERIVED (robust)** | none kit-shaped; a real seed/deployer drift breaks the pinned-pubkey assertion loudly |
-| **FIX 1** `needsSponsorRebuild` | **no fixture at all** — `sponsor.test.ts` covers only `enforceFeeCap` / `consumeSponsorBudget` | **UNTESTED** | any change to the credential-type filter — nothing asserts on V2, the `sourceAccount` exclusion, or the one-op/invokeHostFunction/has-auth guards. (The filter is a _negative_ `!== sorobanCredentialsSourceAccount` check, so it accepts V2 correctly _today_ — safe by luck, not by test.) |
-| **L1** attach-tx decode | `verify-attach.test.ts:34-38` `buildAddPolicyXdr` | **CODE-SHAPED (same defect class as `scope.test.ts`)** | the helper builds a **3-element** `[Symbol('Policy'), Address, Void]` vec, but the kit's real `Signer::Policy` is a **5-element** tuple `[Symbol('Policy'), Address, Vec[Void], Vec[Void], Vec[Symbol('Persistent')]]`. It passes only because `collectAddresses` scans for the address _anywhere_ in the args and the function name is correct. A kit change to where the address is embedded breaks production while the test stays green. |
+| Remediation                     | Fixture site                                                                                        | Verdict                                                | Kit-shape change that slips past                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FIX 2** derivation gate       | `derivation.test.ts:17` (pinned deployer, verified against the kit) + live `deriveWalletContractId` | **KIT-DERIVED (robust)**                               | none kit-shaped; a real seed/deployer drift breaks the pinned-pubkey assertion loudly                                                                                                                                                                                                                                                                                                                                                        |
+| **FIX 1** `needsSponsorRebuild` | **no fixture at all** — `sponsor.test.ts` covers only `enforceFeeCap` / `consumeSponsorBudget`      | **UNTESTED**                                           | any change to the credential-type filter — nothing asserts on V2, the `sourceAccount` exclusion, or the one-op/invokeHostFunction/has-auth guards. (The filter is a _negative_ `!== sorobanCredentialsSourceAccount` check, so it accepts V2 correctly _today_ — safe by luck, not by test.)                                                                                                                                                 |
+| **L1** attach-tx decode         | `verify-attach.test.ts:34-38` `buildAddPolicyXdr`                                                   | **CODE-SHAPED (same defect class as `scope.test.ts`)** | the helper builds a **3-element** `[Symbol('Policy'), Address, Void]` vec, but the kit's real `Signer::Policy` is a **5-element** tuple `[Symbol('Policy'), Address, Vec[Void], Vec[Void], Vec[Symbol('Persistent')]]`. It passes only because `collectAddresses` scans for the address _anywhere_ in the args and the function name is correct. A kit change to where the address is embedded breaks production while the test stays green. |
 
 Three instances of the pattern (scope.test.ts + L1 + FIX-1's absence). Only FIX 2 builds its fixture
 the way the kit actually produces the value.
