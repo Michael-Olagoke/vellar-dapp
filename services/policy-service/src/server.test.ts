@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import {
+  Account,
+  Address,
+  Keypair,
+  Operation,
+  TransactionBuilder,
+  nativeToScVal,
+  xdr,
+} from "@stellar/stellar-sdk";
+import {
   ATTESTATION_REGISTRY_ID,
   DEFAULT_WINDOW_SECONDS,
   policyHash,
@@ -11,7 +20,7 @@ import {
 } from "./templates";
 import type { PolicyDeployer } from "./deploy";
 import { DEPLOY_FEE, PolicyDeployError } from "./deploy";
-import { buildServer } from "./server";
+import { buildServer, createMemoryPolicyRepository } from "./server";
 
 const G1 = "GCMCEGOUVALP2H6LTY7IPUUMSFKDQUMK3SDU5DI7LETNEZZKHRIIALKM";
 const G2 = "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3";
@@ -192,6 +201,115 @@ describe("xlmToStroops", () => {
     ["1.2345678", "12345678"], // truncates the 8th decimal
   ])("%s XLM → %s stroops", (xlm, stroops) => {
     expect(xlmToStroops(xlm).toString()).toBe(stroops);
+  });
+});
+
+describe("POST /policies/deploy — attach verification (L1)", () => {
+  const PASSPHRASE = "Test SDF Network ; September 2015";
+  const WALLET = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+  const POLICY_CONTRACT = "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUWDA";
+
+  function addPolicyXdr(wallet: string, policy: string): string {
+    const signer = xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol("Policy"),
+      nativeToScVal(Address.fromString(policy), { type: "address" }),
+      xdr.ScVal.scvVoid(),
+    ]);
+    const func = xdr.HostFunction.hostFunctionTypeInvokeContract(
+      new xdr.InvokeContractArgs({
+        contractAddress: Address.fromString(wallet).toScAddress(),
+        functionName: "add_signer",
+        args: [signer],
+      }),
+    );
+    const op = Operation.invokeHostFunction({ func, auth: [] });
+    const src = new Account(Keypair.random().publicKey(), "0");
+    return new TransactionBuilder(src, { fee: "100", networkPassphrase: PASSPHRASE })
+      .addOperation(op)
+      .setTimeout(30)
+      .build()
+      .toXDR();
+  }
+
+  /** A repo pre-seeded with an instance_deployed policy bound to WALLET. */
+  async function seededServer(verifyAttach: (h: string) => Promise<unknown>) {
+    const policies = createMemoryPolicyRepository();
+    const app = buildServer({
+      policies,
+      verifyAttach: verifyAttach as never,
+      network: "testnet",
+      networkPassphrase: PASSPHRASE,
+    });
+    const gen = await app.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    const policy = gen.json().policy as { id: string };
+    const rec = await policies.find(policy.id);
+    await policies.update({
+      ...rec!,
+      status: "instance_deployed",
+      instance: {
+        contractId: POLICY_CONTRACT,
+        wallet: WALLET,
+        txHash: "deploytx",
+        deployedAt: new Date().toISOString(),
+      },
+    });
+    return { app, policyId: policy.id };
+  }
+
+  it("stamps deployed when the attach tx binds this policy to this wallet", async () => {
+    const { app, policyId } = await seededServer(async () => ({
+      status: "SUCCESS",
+      envelopeXdr: addPolicyXdr(WALLET, POLICY_CONTRACT),
+    }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "realhash", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().policy.status).toBe("deployed");
+  });
+
+  it("422s a valid-but-unrelated tx (different policy) — does not stamp", async () => {
+    const other = "CAFK7NMQOT7G2SKMREDUII3EOK4APIY54WIK6CVGY72XWFE76YFRDF67";
+    const { app, policyId } = await seededServer(async () => ({
+      status: "SUCCESS",
+      envelopeXdr: addPolicyXdr(WALLET, other),
+    }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "somehash", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe("attach_mismatch");
+  });
+
+  it("503s (does not stamp) when the RPC can't confirm the tx", async () => {
+    const { app, policyId } = await seededServer(async () => ({ status: "NOT_FOUND" }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "missing", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("attach_unconfirmed");
+  });
+
+  it("503s when the RPC is unreachable (throws)", async () => {
+    const { app, policyId } = await seededServer(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "x", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(503);
   });
 });
 

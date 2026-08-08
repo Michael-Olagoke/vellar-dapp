@@ -34,6 +34,11 @@ export type PermissionGrant = z.infer<typeof permissionGrantSchema>;
  * Normalizes an origin string ("https://app.example.com"). Rejects anything
  * that isn't a clean http(s) origin — lookalike/garbage origins never reach
  * storage (§8.2 phishing mitigations).
+ *
+ * A single trailing dot on the host ("app.example.com.") denotes the same FQDN
+ * as the dotless form; we collapse it (L5) so the two don't become distinct
+ * grant keys. Only ONE trailing dot is stripped — arbitrary garbage is not
+ * canonicalized.
  */
 export function normalizeOrigin(value: string): string | undefined {
   let url: URL;
@@ -45,6 +50,11 @@ export function normalizeOrigin(value: string): string | undefined {
   if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
   if (url.origin === "null") return undefined;
   if (url.origin !== value) return undefined; // must be a bare origin, no path/query
+  if (url.hostname.endsWith(".")) {
+    // Rebuild the origin with the single trailing dot removed. Set via the URL
+    // so the origin string is recomputed consistently (host + port).
+    url.hostname = url.hostname.slice(0, -1);
+  }
   return url.origin;
 }
 

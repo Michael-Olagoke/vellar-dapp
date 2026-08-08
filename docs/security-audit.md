@@ -157,6 +157,41 @@ read oracle. Same build-box gating as H2.
   documented invariant is off by 2×. Overflow is _safe_ (`overflow-checks=true` + `checked_add`,
   panic on None). **Fix:** true sliding window, or document the 2× honestly.
 
+  > **Status (FIX 10): CLOSED by documentation — behavior UNCHANGED.** This is a product
+  > decision, resolved as "keep tumbling, fix every claim" (Option B). The contract is not
+  > modified; the 2× boundary property is now stated honestly everywhere and PINNED by tests:
+  >
+  > - The contract module doc (`spending-limit/src/lib.rs:18-23`) now describes the FIXED
+  >   (tumbling) window and the up-to-2×-across-a-boundary behavior explicitly.
+  > - Two tests assert the property in BOTH directions
+  >   (`spending-limit/src/test.rs`: `boundary_allows_up_to_two_times_limit` and
+  >   `boundary_does_not_allow_more_than_two_times_limit`). A future change to the reset logic
+  >   (e.g. to a sliding window) breaks the first test — flagging that the documented contract
+  >   changed, in either direction.
+  > - The UI copy was corrected: the policy-builder header, the spending-limit card description,
+  >   and the review-step paragraph (`apps/web/app/policies/page.tsx`), plus the template registry
+  >   source of truth (`services/policy-service/src/templates.ts` — description AND comments).
+  >   The `apps/docs/` "rolling window" mislabels are corrected in a separate docs commit.
+  >
+  > **Why Option A (sliding window in the contract) was REJECTED:** a sliding window is a new
+  > wasm hash, so **existing deployed policy instances keep tumbling semantics until detached and
+  > re-attached** — Option A would split users across two different guarantees with **no external
+  > way to tell which a wallet has** (the deployed contract id doesn't reveal the semantics). It
+  > also adds storage + gas on every guarded transfer. Given the docs already recommend pairing
+  > this policy with an authenticated co-signer for a hard cap, the 2× is a bounded, documented
+  > guardrail property, not a defect. **Revisit A only if the spending limit ever becomes a
+  > standalone security boundary rather than a co-signer-paired guardrail.**
+  >
+  > **UI-vs-docs asymmetry worth knowing:** the UI header claimed an EXTERNAL AUDIT the policy
+  > contracts have not had ("Policies come from audited templates … not by a promise"). No audit
+  > report exists in the repo or git history; the only audited artifact is the external
+  > kalepail/passkey-kit smart wallet, which these policies depend on but did not write (the
+  > contracts even self-disclaim "audited" — `verified-recipient/src/lib.rs:16`,
+  > `attestation-registry/src/lib.rs:14`). By contrast, `apps/docs/` was already accurate — it
+  > correctly attributes the audit to passkey-kit and says the policy contract is "testnet only,
+  > not yet audited for mainnet." The docs were written carefully; the UI string was not. **Takeaway:
+  > review UI strings whenever a contract's behavior is documented — that's where overclaims slip in.**
+
 - **M4 — verified-recipient bricks all covered transfers with no live registry `[my code]`** —
   `contracts/policy-templates/verified-recipient/src/lib.rs:184-205`. As a required co-signer it
   rejects the whole auth for any unattested contract; `is_verified` returns false for
@@ -219,6 +254,30 @@ read oracle. Same build-box gating as H2.
   **refuted** (`close-prs-*.yml` only _close_ PRs — no checkout, no merge). **Fix:**
   `autoDeploy: false`, required status checks on main, `pnpm audit` gate.
 
+  > **Status (FIX 11): PARTIALLY CLOSED — repo-side done, two settings remain manual.**
+  > Done in-repo on this branch:
+  >
+  > - **`pnpm audit --audit-level=high` added to CI** (`.github/workflows/ci.yml`, after Install):
+  >   a newly-introduced high/critical advisory now blocks the build. Currently green (FIX 8 took
+  >   the count to 0 high).
+  > - **`autoDeploy: false` on the Render service** (`render.yaml`): Render no longer ships every
+  >   push to `main`; deploy is a manual/tagged action after CI passes.
+  >
+  > **Remains MANUAL (cannot be set from a committed file — dashboard/settings only):**
+  >
+  > 1. **GitHub branch protection on `main`** — mark the `ci` check (and, if desired,
+  >    `pnpm audit`) as a **required status check**, and require PRs (no direct pushes). This is
+  >    a repo Settings → Branches value; nothing in the repo can enforce it.
+  > 2. **Railway `autoDeploy`** — `railway.json` has no autoDeploy field; Railway's auto-deploy is
+  >    a dashboard setting. If Railway is a live target, turn it off there too (or confirm Render
+  >    is the only deploy target and Railway is unused).
+  > 3. **Confirm which platform is actually live** (V6, still open) — the gate only matters on the
+  >    platform that deploys. If only Render is live, item 2 is moot.
+  >
+  > Until the branch protection (item 1) is set, CI is a signal, not a gate — a maintainer can
+  > still merge red. The repo-side changes make the gate _possible_; the dashboard settings make
+  > it _binding_.
+
 ---
 
 ## 🟢 LOW
@@ -228,6 +287,31 @@ read oracle. Same build-box gating as H2.
   today_ (verified: UI shows "attached" only after a real passkey-signed on-chain attach via
   `apps/web/lib/policy.ts:82-93`). Latent; harden before any consumer trusts it. **Fix:** verify
   the txHash on-chain before stamping `deployed`.
+
+  > **Status (FIX 12/L1): CLOSED by verification, NOT by removal.** The field is kept (it is the
+  > canonical "this policy is now attached" record `deployPolicy` returns), but `/policies/deploy`
+  > now **decodes the client-supplied tx and confirms it actually attached THIS policy to THIS
+  > wallet** before stamping `deployed` (`services/policy-service/src/verify-attach.ts`):
+  >
+  > - The tx must exist and have SUCCEEDED on the **server-config network** (the lookup is bound to
+  >   config's RPC, never the request body — V5), invoked `add_signer`/`update_signer` on the
+  >   record's **wallet**, and carry the record's **policy contract id** in the signer args (found
+  >   by recursively scanning the ScVal args, so the address inside the nested `Signer::Policy`
+  >   enum is matched). The wallet is now persisted on `record.instance` at `/deploy-instance` so
+  >   there is something to verify against.
+  > - **Two failure modes are distinguished** so an operator can tell "can't reach chain" from
+  >   "you lied": `AttachUnconfirmedError` → **503** (RPC unreachable or tx NOT_FOUND — fail closed,
+  >   retryable, not stamped); `AttachMismatchError` → **422** (tx FAILED, or attached a different
+  >   policy/wallet, or is an unrelated call — a definite lie).
+  >
+  > **Why the "exists + succeeded" check was REJECTED:** that only defeats `txHash: "00…"`. Any
+  > successful hash on the network passes, and the chain is a public list of those (our own docs
+  > publish testnet hashes) — the attacker's cost goes from typing zeros to copy-pasting. Worse, it
+  > would hand a future consumer a field that _looks_ verified and isn't, so the next person won't
+  > re-derive the weakness. Same standard as **FIX 2**: verify that the tx equals the expected
+  > attach, not that it is a plausible tx. Tests: an unrelated same-network tx → 422; a tx attaching
+  > a different policy → 422; this policy to a different wallet → 422; the legit flow → 200; RPC
+  > unreachable → 503 (not stamped).
 
 - **L2 — Downstream services bind `0.0.0.0:4001-4004` with no middleware `[my code]`** —
   `service-kit/src/index.ts:88`. _Downgraded to Low:_ committed configs publish only `$PORT`,
@@ -240,19 +324,128 @@ read oracle. Same build-box gating as H2.
   deep-link target (phishing). Downgraded (needs user to open attacker page; passkey still gates
   signing). **Fix:** env-configured allowlist of canonical Vellar web origins.
 
+  > **Status (FIX 12/L3): CLOSED.** `routeProviderRequest` now gates `pair` on a fail-closed
+  > web-app-origin allowlist (`apps/extension/lib/pair-origins.ts` + `router.ts`); an off-list
+  > origin is refused `unauthorized` **before any approval popup**, so an attacker page can never
+  > become `webAppOrigin` or seed the paired `rpcUrl` (which closes L4's precondition).
+  >
+  > The allowlist is resolved **fail-closed, matching FIX 7's boot posture** — it does not
+  > silently degrade the way the in-memory DB fallback would:
+  >
+  > - **Trust signal:** the dev/prod split keys off `import.meta.env.COMMAND` (`"build"` vs
+  >   `"serve"`), which WXT/Vite **injects at bundle time per artifact** — a _runtime_ env var
+  >   cannot spoof it, unlike a `NODE_ENV` read. (`import.meta.env.MODE` would work too;
+  >   `COMMAND` is the WXT-native, typed one in `.wxt/types/globals.d.ts`.)
+  > - **Dev build, nothing configured:** falls back to `http://localhost:3000` / `:5173` only.
+  > - **Production build, nothing configured:** `pairOriginPolicy()` **throws**; the background
+  >   worker catches it and sets the policy to `[]` — **pairing is disabled**, not opened to
+  >   localhost or to any origin. An unconfigured prod artifact simply cannot pair.
+  > - **Escape hatch is named + warned, never silent:** `WXT_PUBLIC_ALLOW_ANY_PAIR_ORIGIN=1`
+  >   (same shape as `ALLOW_INMEMORY` / `ALLOW_SINGLE_KEY_ATTESTOR`) disables the restriction and
+  >   logs a warning on every startup; it is in no committed manifest.
+  > - Origins come from `WXT_PUBLIC_WEB_APP_ORIGINS` (comma-separated), each canonicalized through
+  >   `normalizeOrigin` (a single trailing slash tolerated; paths/junk dropped); documented in
+  >   `apps/extension/README.md`.
+  >
+  > Tests (`pair-origins.test.ts`, `router.test.ts`): dev+empty → localhost only; prod+empty →
+  > throws (no fallback); prod+origins → exactly those; a non-listed origin → refused in both
+  > modes; the `"any"` escape hatch → any origin may pair.
+
 - **L4 — Device signing consults attacker-controllable `rpcUrl` for the expiration ledger
   `[dependency]`** — `extension/lib/tx-signer.ts:56-61,83`. Precondition is L3; an inflated
   `getLatestLedger` widens the on-chain validity window for that one signed entry. **Fix:** use
   the extension's own per-network RPC, or pass a locally-bounded explicit expiration.
 
+  > **Status (FIX 12/L4): CLOSED.** Both halves of the fix are applied: the anchor now comes from
+  > a **trusted per-network RPC** and the window is **explicitly capped**, so the caller-supplied
+  > `wallet.rpcUrl` is entirely out of the expiration path (`apps/extension/lib/signer-expiration.ts`
+  >
+  > - `tx-signer.ts`).
+  >
+  > passkey-kit, given no explicit `expiration`, calls `getLatestLedger()` on `wallet.rpcUrl` and
+  > sets `signatureExpirationLedger = latest + timeout/5` (verified in `passkey-kit@0.14.0`
+  > `kit/tx-ops.js:26,49-57`); it only asserts the result is a u32, no upper bound. `signAuthEntry`
+  > accepts an explicit `expiration` and, when supplied, **never calls `getLatestLedger`** — so we
+  > supply one:
+  >
+  > - **Trusted anchor (Option C).** `resolveTrustedRpcUrl` returns SDF's pinned
+  >   `https://soroban-testnet.stellar.org` for testnet, and the build-time
+  >   `WXT_PUBLIC_MAINNET_RPC_URL` for mainnet — neither is the paired `rpcUrl`. Mainnet with no
+  >   configured RPC **fails closed** (`TrustedRpcUnavailableError`); the anchor fetch itself
+  >   propagates transport errors rather than falling back to the caller endpoint. Chosen over
+  >   reading the tx's own ledger bounds (Soroban txs often carry none, and a control that rejects
+  >   correct transactions gets removed by whoever hits it first).
+  > - **Capped window.** `boundedExpirationLedger` adds **exactly `MAX_EXPIRATION_LEDGERS = 60`**
+  >   (~5 min at ~5s/ledger) — the ADDED span is never anchor-proportional, so an inflated anchor
+  >   cannot widen it — clamped to u32. 60 is a deliberate approval-latency-vs-replay-window
+  >   tradeoff: it must cover the worst realistic approval (user gets the popup, switches apps,
+  >   returns, approves), and the replay exposure traded away is small — the device key is already
+  >   a 7-day expiring co-signer, further bounded by attached policies.
+  > - **Nothing else in the signing path trusts `wallet.rpcUrl` for a security-relevant value.**
+  >   `connectWallet` uses it to confirm the wallet exists and the keyId is a signer, but the
+  >   wallet binding is re-asserted locally (`kit.contractId === wallet.address`, and `contractId`
+  >   is a deterministic local derivation, not an RPC claim), and a lying "you are a signer" cannot
+  >   forge a signature — the device key signs and the real network validates at submit. Only the
+  >   expiration is baked into the signed payload, and that is what this fix removes from the RPC.
+  >
+  > Tests (`signer-expiration.test.ts`, `tx-signer.test.ts`): the added span is always exactly the
+  > cap regardless of anchor size; the cap is 60; mainnet with no RPC throws and signs nothing; the
+  > wired signer fetches the anchor from the pinned testnet endpoint (asserted `!= wallet.rpcUrl`)
+  > and passes the capped `expiration` to `signAuthEntry`.
+
 - **L5 — `normalizeOrigin` accepts trailing-dot FQDNs as distinct principals `[my code]`** —
   `provider-sdk/src/permissions.ts:38-49`. UX confusion only; the browser scopes storage per
   origin so no privilege inheritance. **Fix (optional):** strip a single trailing dot.
+
+  > **Status (FIX 12/L5): CLOSED.** `normalizeOrigin` now collapses a single trailing dot on the
+  > host (`app.example.com.` → `app.example.com`) by stripping it from `url.hostname` and letting
+  > the URL recompute the origin (so host + port stay consistent). The existing bare-origin guard
+  > (`url.origin !== value`) still runs first, so a dotted host with a path/query is rejected before
+  > the strip, exactly as before. Only ONE dot is removed — a doubled dot stays distinct, since we
+  > canonicalize the one real FQDN convention, not arbitrary garbage. Tests (`permissions.test.ts`):
+  > the dotted and dotless forms map to the same normalized origin (incl. with an explicit port and
+  > on `localhost.`); a doubled trailing dot is not collapsed to the clean form.
 
 - **L6 — Cleanup builder emits all ops into one tx + unpaginated `as`-cast Horizon reads
   `[my code]`** — `lifecycle-service/src/builder.ts:44-103`, `horizon.ts:44-95`.
   Correctness/DoS, **not** fund theft (every tx is unsigned; the user must sign). **Fix:** split
   by `OPS_PER_TX=100`; add fetch timeouts; paginate/validate Horizon responses.
+  - **L6b — "Safe account cleanup" copy overclaim `[my code]`** — `apps/web/app/page.tsx:46`
+    (live landing) names the cleanup feature "Safe account cleanup." Cleanup **moves funds and
+    merging classic accounts is irreversible**, so "safe" is a claim, not a label. Surfaced while
+    fixing M3's overclaims (grep for "safe"). Handle the copy in the same pass as the L6 cleanup-
+    builder work (right context — the builder + its promise reviewed together). The gitignored
+    `landing-page/VELA Landing.html` has the same string but does not ship; leave it.
+
+  > **Status (FIX 12/L6): CLOSED.** All four parts fixed, with the L6b copy in the same pass so the
+  > builder and its user-facing promise stay in agreement.
+  >
+  > - **Op-split.** `buildCleanupSteps` (`lifecycle-service/src/builder.ts`) now collects every
+  >   cleanup operation and splits by `OPS_PER_TX = 100` — Stellar's hard protocol limit (a 101-op
+  >   tx is rejected with `txTOO_MANY_OPS`; the SDK does not guard it client-side, so the old
+  >   single-tx build silently produced an invalid tx for >100-op accounts, despite the "can re-run
+  >   the wizard" comment). Split transactions share one `Account` source, so they carry
+  >   **consecutive sequence numbers** and the user signs/submits them in order; each step is
+  >   titled `(n/total)`.
+  > - **Planner agreement.** `buildCleanupPlan`'s `estimatedTransactions` now counts the REAL op
+  >   count (a "N open offers" blocker is one row but N cancel ops; a non-zero balance is two ops),
+  >   so the estimate no longer under-reports the number of transactions the builder emits.
+  > - **Horizon reads validated + paginated + timed out.** `createHorizonAccountReader`
+  >   (`horizon.ts`) replaces the `as`-casts with **zod** runtime validation (a malformed body
+  >   throws a clear "Horizon … was malformed" error, not a cryptic `.map of undefined` in the
+  >   builder), follows `_links.next` to collect **all** offer pages (the old `?limit=200` read
+  >   only the first page, so a >200-offer account would clean up incompletely and fail the merge),
+  >   guards against a self-referential `next` (stops on an empty page, capped at `maxOfferPages`),
+  >   and wraps every request in an `AbortController` **timeout** so a hung Horizon can't stall.
+  > - **L6b copy.** The landing card is retitled **"Guided account cleanup"** and its body now
+  >   states plainly that closing an account moves its funds and can't be undone — the honest
+  >   guarantee (guided, reviewable, you sign every step), not "safe". The gitignored landing HTML
+  >   is left as-is (does not ship).
+  >
+  > Tests: `builder.test.ts` (no step exceeds 100 ops; 250 ops → 3 txs summing to 250; consecutive
+  > sequences; non-zero balance = 2 ops); `server.test.ts` (150 offers → 3 transactions estimate;
+  > 100 non-zero balances → 3); `horizon.test.ts` (404 → undefined; non-ok → throws; malformed body
+  > → clear error; offers collected across pages; empty-page guard; timeout aborts).
 
 - **L7 — 14 high dependency advisories (0 critical) `[dependency]`** — `pnpm-workspace.yaml:16`.
   Most reachable ones config-mitigated (no http2 → find-my-way DoS inert). **Fix:** add

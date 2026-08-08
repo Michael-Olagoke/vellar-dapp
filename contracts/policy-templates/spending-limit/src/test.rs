@@ -266,6 +266,59 @@ fn window_does_not_reset_before_elapse() {
         .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, 1));
 }
 
+// DOCUMENTED BOUNDARY BEHAVIOR (security-audit.md M3): the window is FIXED
+// (tumbling), not sliding, so up to 2 * daily_limit can move across a boundary.
+// These two tests PIN that property in both directions: if someone changes the
+// reset logic (e.g. to a sliding window), the first test starts failing —
+// telling them they changed the documented contract. The module doc + the UI
+// copy promise exactly this behavior; keep them in sync with these tests.
+#[test]
+fn boundary_allows_up_to_two_times_limit() {
+    // window_start is anchored at the FIRST spend. Anchor it with a tiny spend
+    // at t=0, then spend the REST of the cap near the very end of that window,
+    // then cross the boundary and spend a FRESH full cap — the two large spends
+    // land within ~1 second of each other yet total ~2 * TEN_XLM.
+    let fx = setup(TEN_XLM, DAY, false);
+    install(&fx);
+    // t=0: anchor window_start=0 with a 1-stroop spend.
+    fx.policy
+        .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, 1));
+    // Near the end of window 0: spend the rest of the cap (10 XLM - 1 stroop).
+    fx.env
+        .ledger()
+        .set_timestamp(fx.env.ledger().timestamp() + DAY - 1);
+    fx.policy
+        .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, TEN_XLM - 1));
+    // +1s crosses into window 1 (elapsed == DAY → reset): a fresh full cap
+    // passes. ~2 * TEN_XLM moved across the boundary in ~1 second.
+    fx.env.ledger().set_timestamp(fx.env.ledger().timestamp() + 1);
+    fx.policy
+        .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, TEN_XLM));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn boundary_does_not_allow_more_than_two_times_limit() {
+    // The 2x is a HARD ceiling per boundary, not unbounded: after the fresh
+    // window's full cap is spent, one more stroop in that same new window is
+    // rejected. Proves the leak is exactly 2x, not "reset lets anything through".
+    let fx = setup(TEN_XLM, DAY, false);
+    install(&fx);
+    fx.policy
+        .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, 1));
+    fx.env
+        .ledger()
+        .set_timestamp(fx.env.ledger().timestamp() + DAY - 1);
+    fx.policy
+        .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, TEN_XLM - 1));
+    fx.env.ledger().set_timestamp(fx.env.ledger().timestamp() + 1);
+    fx.policy
+        .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, TEN_XLM));
+    // Third spend, still inside the new window → over the fresh cap → rejected.
+    fx.policy
+        .policy__(&fx.wallet, &signer_key(&fx), &transfer_ctx(&fx.env, &fx.wallet, 1));
+}
+
 #[test]
 fn respects_custom_limit_and_window() {
     // 25 XLM over 1 hour — proves config actually drives enforcement.

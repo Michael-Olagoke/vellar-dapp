@@ -43,8 +43,8 @@ const features = [
     icon: <path d="M9 11a4 4 0 118 0c0 3-3 4-3 4M13 20h.01M12 3a9 9 0 100 18" />,
   },
   {
-    title: "Safe account cleanup",
-    body: "Reclaim locked reserves from unused trustlines and stale entries in one guided sweep.",
+    title: "Guided account cleanup",
+    body: "Reclaim locked reserves from unused trustlines and stale entries. Every step is laid out for you to review and sign — closing an account moves its funds and can't be undone.",
     icon: (
       <>
         <path d="M4 7l8-4 8 4-8 4-8-4z" />

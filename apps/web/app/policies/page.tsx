@@ -56,8 +56,8 @@ export default function Policies() {
             }}
           >
             Add programmable guardrails to your smart account — spending limits, multisig, contract
-            allowlists. Policies come from audited templates and are enforced on-chain, not by a
-            promise.
+            allowlists. Policies are built from structured templates and enforced on-chain — by the
+            deployed contract, not by the app.
           </p>
         </header>
 
@@ -109,6 +109,11 @@ function TemplatePicker({
       </p>
     );
   }
+  // Available templates first, unavailable ("Coming soon") last — a stable sort
+  // keeps the registry's order within each group so live templates don't get an
+  // unavailable one wedged between them.
+  const isAvailable = (t: PolicyTemplateInfo) => t.enforcement.kind !== "custom-contract-pending";
+  const ordered = [...templates].sort((a, b) => Number(isAvailable(b)) - Number(isAvailable(a)));
   return (
     <div
       style={{
@@ -117,8 +122,8 @@ function TemplatePicker({
         gap: 16,
       }}
     >
-      {templates.map((t) => {
-        const available = t.enforcement.kind !== "custom-contract-pending";
+      {ordered.map((t) => {
+        const available = isAvailable(t);
         return (
           <button
             key={t.type}
@@ -341,9 +346,12 @@ function ReviewCard({
   // Spending limits deploy a contract instance; other templates don't yet.
   const deployable = enforcement.kind === "policy-contract" && !!enforcement.constructorArgs;
   const cap =
-    enforcement.kind === "policy-contract" && enforcement.constructorArgs
+    enforcement.kind === "policy-contract" &&
+    enforcement.constructorArgs &&
+    "dailyLimitStroops" in enforcement.constructorArgs
       ? enforcement.constructorArgs
       : undefined;
+  const isVerifiedOnly = policy.definition.type === "verified_only";
   const busy = state.name === "simulating" || state.name === "deploying";
 
   async function runDeploy() {
@@ -434,10 +442,22 @@ function ReviewCard({
           className="neo-inset"
           style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
         >
-          Your account will be able to move at most{" "}
+          Your account can move up to{" "}
           <strong style={{ color: "var(--ink)" }}>{stroopsToXlm(cap.dailyLimitStroops)} XLM</strong>{" "}
-          in total every {Math.round(cap.windowSeconds / 3600)} hours through this policy. This is a
-          cumulative rolling window, not a per-transaction cap — the safe way to bound spend.
+          total per {Math.round(cap.windowSeconds / 3600)}-hour period through this policy. The
+          limit resets on a fixed schedule, not a continuously sliding window — so transfers made
+          just before and just after a reset can move up to twice that amount within a short span.
+          Use it as a spending guardrail, and pair it with a co-signer if you need a hard cap.
+        </div>
+      )}
+
+      {isVerifiedOnly && (
+        <div
+          className="neo-inset"
+          style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
+        >
+          Enforced on-chain against the attestation registry. Verified means provenance, not audited
+          or safe.
         </div>
       )}
 

@@ -70,6 +70,28 @@ describe("buildCleanupPlan", () => {
     const usdcBalance = plan.blockers.find((b) => b.type === "balance");
     expect(usdcBalance?.actionRequired).toMatch(/transfer or burn/i);
   });
+
+  it("estimates cleanup transactions from the real op count, not blocker count (L6)", () => {
+    // 150 open offers = 150 cancel OPS = 2 cleanup txs (ceil(150/100)) + 1 merge.
+    // The old estimate counted offers as a single blocker and under-reported 2.
+    const plan = buildCleanupPlan(account({ openOffers: 150 }), G2);
+    expect(plan.estimatedTransactions).toBe(3);
+  });
+
+  it("counts a non-zero balance as two ops (transfer + trustline) in the estimate", () => {
+    // 100 non-zero token balances = 200 ops = 2 cleanup txs + 1 merge.
+    const balances = [
+      { assetType: "native", balance: "10.0" },
+      ...Array.from({ length: 100 }, (_, i) => ({
+        assetType: "credit_alphanum4",
+        assetCode: `T${i}`,
+        assetIssuer: G2,
+        balance: "1.0",
+      })),
+    ];
+    const plan = buildCleanupPlan(account({ balances }), G2);
+    expect(plan.estimatedTransactions).toBe(3);
+  });
 });
 
 describe("POST /lifecycle/inspect", () => {

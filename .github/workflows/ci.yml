@@ -38,6 +38,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Fail the build on any high/critical dependency advisory (M9 / FIX 11).
+      # Overrides in pnpm-workspace.yaml keep this green; a newly-introduced high
+      # advisory blocks merge until it is patched or explicitly overridden.
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
       - name: Format check
         run: pnpm format:check
 

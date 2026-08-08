@@ -73,6 +73,16 @@ function jobStoreOver(
       r.updatedAt = new Date().toISOString();
       await records.update(r);
     },
+    async reapStranded() {
+      // The reaper is covered by memory-/pg-job-store tests; not exercised here.
+      return { reclaimed: 0, deadLettered: 0 };
+    },
+    async countActive() {
+      return 0;
+    },
+    async hasActiveForContract() {
+      return false;
+    },
     async listLatestVerified() {
       // The attestor's sweep is out of scope for this pipeline e2e (covered by
       // attestor.test.ts); this store never feeds one.

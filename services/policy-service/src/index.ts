@@ -87,6 +87,24 @@ const budget: SpendBudget = dbHandle
   : createUnavailableBudget();
 deps.budget = budget;
 
+// L1 attach verification: /policies/deploy verifies the attach tx against the
+// server-config network's RPC before stamping 'deployed'. Bound to config's RPC
+// + passphrase, never the request body (V5).
+{
+  const { rpc } = await import("@stellar/stellar-sdk");
+  const rpcServer = new rpc.Server(config.rpcUrl);
+  deps.network = deps.budgetNetwork;
+  deps.networkPassphrase = config.networkPassphrase;
+  deps.verifyAttach = async (txHash: string) => {
+    const res = await rpcServer.getTransaction(txHash);
+    if (res.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      return { status: "SUCCESS", envelopeXdr: res.envelopeXdr?.toXDR("base64") };
+    }
+    if (res.status === rpc.Api.GetTransactionStatus.NOT_FOUND) return { status: "NOT_FOUND" };
+    return { status: "FAILED" };
+  };
+}
+
 const app = buildServer(deps);
 if (closeDb) {
   app.addHook("onClose", async () => closeDb?.());

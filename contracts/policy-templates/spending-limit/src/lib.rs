@@ -16,11 +16,16 @@
 //! cap is therefore NOT a spending limit: repeated capped transfers can move
 //! the wallet's full balance (smart-wallet-interface PolicyInterface docs).
 //! So the user's "daily limit" is enforced as a CUMULATIVE total over a
-//! rolling window: the most anyone can move through this policy is
-//! `daily_limit` per `window_seconds`. Worst-case loss is bounded to the cap.
-//! For a hard guarantee that even that bounded amount requires a real
-//! signature, pair this policy — via the granting signer's `SignerLimits` —
-//! with an authenticated cryptographic co-signer.
+//! FIXED (tumbling) window, NOT a continuously sliding one: `spent` accumulates
+//! from the first spend of a window and resets to zero once `window_seconds`
+//! have elapsed since that `window_start` (see `policy__`). Because the reset is
+//! on a fixed schedule rather than sliding, spending near a boundary can move up
+//! to `2 * daily_limit` within a short span — the full cap just before the reset
+//! plus the full cap just after. The bound is therefore `daily_limit` per FIXED
+//! window and AT MOST `2 * daily_limit` across any boundary. This is intentional
+//! and TESTED (see `test.rs` boundary test): treat this as a spending guardrail,
+//! not a hard cap. For a hard guarantee, pair it — via the granting signer's
+//! `SignerLimits` — with an authenticated cryptographic co-signer.
 //!
 //! ## Immutable configuration (deploy-once)
 //!

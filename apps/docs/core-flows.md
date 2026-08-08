@@ -75,7 +75,7 @@ then "Deploy to my account".
 5. **Record:** `POST /policies/deploy` records the completed attach.
 
 **On-chain:** a per-account Soroban policy contract enforcing a cumulative
-rolling-window spend cap. See [Policy Contract](./policy-contract.md).
+fixed-window (tumbling) spend cap. See [Policy Contract](./policy-contract.md).
 
 > Multisig-threshold and contract-allowlist templates are enforced by the smart
 > wallet's native signer limits rather than a deployed contract. The timelock

@@ -4,6 +4,9 @@ import { routeProviderRequest } from "./router";
 import type { ExtensionState } from "./state";
 
 const ORIGIN = "https://dapp.example";
+// The web app permitted to pair. `pair` from any other origin is refused; the
+// pre-existing tests that don't pass a policy get "any" (behavior unchanged).
+const WEB_APP = "https://app.vellar.xyz";
 
 const grant: PermissionGrant = {
   origin: ORIGIN,
@@ -104,44 +107,49 @@ describe("routeProviderRequest", () => {
     });
   });
 
-  it("pair always needs approval, even when nothing is paired yet", () => {
-    const pair: ProviderRequest = {
-      method: "pair",
-      params: {
-        address: "CNEW",
-        network: "testnet",
-        rpcUrl: "https://rpc.test",
-        keyId: "key-1",
-        walletWasmHash: "ab".repeat(32),
-      },
-    };
-    expect(routeProviderRequest(pair, ORIGIN, { grants: [] })).toEqual({
+  const pairFrom = (): ProviderRequest => ({
+    method: "pair",
+    params: {
+      address: "CNEW",
+      network: "testnet",
+      rpcUrl: "https://rpc.test",
+      keyId: "key-1",
+      walletWasmHash: "ab".repeat(32),
+    },
+  });
+
+  it("pair from an allowlisted web-app origin needs approval, even when nothing is paired", () => {
+    // Allowlisted origin, nothing paired yet.
+    expect(routeProviderRequest(pairFrom(), WEB_APP, { grants: [] }, [WEB_APP])).toEqual({
       kind: "needs-approval",
-      origin: ORIGIN,
+      origin: WEB_APP,
     });
     // Re-pairing while already paired also requires approval.
-    expect(routeProviderRequest(pair, ORIGIN, granted)).toEqual({
+    expect(routeProviderRequest(pairFrom(), WEB_APP, granted, [WEB_APP])).toEqual({
+      kind: "needs-approval",
+      origin: WEB_APP,
+    });
+  });
+
+  it("pair from an origin NOT on the allowlist is refused (L3)", () => {
+    const decision = routeProviderRequest(pairFrom(), "https://evil.example", { grants: [] }, [
+      WEB_APP,
+    ]);
+    expect(decision.kind).toBe("respond");
+    if (decision.kind === "respond") {
+      expect(decision.payload).toMatchObject({ error: { code: "unauthorized" } });
+    }
+  });
+
+  it('the "any" policy (dev/escape-hatch) lets any origin pair', () => {
+    expect(routeProviderRequest(pairFrom(), ORIGIN, { grants: [] }, "any")).toEqual({
       kind: "needs-approval",
       origin: ORIGIN,
     });
   });
 
-  it("pair from a garbage origin is still rejected", () => {
-    expectError(
-      { grants: [] },
-      {
-        method: "pair",
-        params: {
-          address: "CNEW",
-          network: "testnet",
-          rpcUrl: "https://rpc.test",
-          keyId: "key-1",
-          walletWasmHash: "ab".repeat(32),
-        },
-      },
-      "file:///etc",
-      "invalid_request",
-    );
+  it("pair from a garbage origin is rejected before the allowlist check", () => {
+    expectError({ grants: [] }, pairFrom(), "file:///etc", "invalid_request");
   });
 
   it("pair_status confirms a known address without approval, denies everything else", () => {

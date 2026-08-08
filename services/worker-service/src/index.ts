@@ -135,10 +135,30 @@ const loop = startWorkerLoop({
 });
 log.info(`build worker started (rpc=${config.rpcUrl}). Polling for submitted verifications.`);
 
+// Reaper (M7): periodically return crashed 'building' rows to the queue, or
+// park them in dead_letter after too many attempts, so a mid-build crash can't
+// strand a job forever.
+const runReaper = async () => {
+  try {
+    const res = await store.reapStranded({
+      timeoutMs: config.reapTimeoutMs,
+      maxAttempts: config.maxBuildAttempts,
+    });
+    if (res.reclaimed || res.deadLettered) {
+      log.info(`reaper: reclaimed ${res.reclaimed}, dead-lettered ${res.deadLettered}`);
+    }
+  } catch (err) {
+    log.error("reaper sweep failed", err);
+  }
+};
+const reapTimer = setInterval(runReaper, config.reapIntervalMs);
+void runReaper();
+
 const shutdown = async () => {
   log.info("shutting down…");
   loop.stop();
   if (sweepTimer) clearInterval(sweepTimer);
+  clearInterval(reapTimer);
   await metricsApp.close();
   await pool.end();
   process.exit(0);
