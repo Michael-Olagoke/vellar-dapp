@@ -705,9 +705,60 @@ false`: when `DATABASE_URL` is set but unreachable, the guard falls through to `
 where audit log, sessions, and the FIX-3 spend budgets would reset to volatile in-memory while
 health monitoring says healthy. Downgraded High→Medium only because both manifests are testnet-only.
 
-> **Status (RA-4): OPEN — fix in this pass.** Set `NODE_ENV=production` in the deploy config so the
-> FIX-7 guard is live, or key the guard off a signal actually present at runtime. This is worse than
-> a normal Medium because it re-opens a finding already marked closed.
+> **Status (RA-4): CLOSED — by inverting the default, not by patching the manifest.** Setting
+> `NODE_ENV=production` in the deploy config would work only until the next target that forgets it —
+> a missing env var still meaning "less safe" is the bug. Instead the polarity is inverted: in
+> `packages/service-kit/src/persistence.ts`, in-memory is now the branch that requires an **explicit**
+> signal, and **absence fails closed**:
+>
+> - `resolvePersistencePolicy` degrades to in-memory only on an **explicitly ephemeral** env
+>   (`NODE_ENV === "development" | "test"`) or the operator opt-in `ALLOW_INMEMORY=1`. An **unset**
+>   `NODE_ENV` — the deploy-target reality — no longer degrades; with no usable durable DB it returns
+>   `fail` and the service `process.exit(1)`s. The wallet- and policy-service call sites feed
+>   `process.env.NODE_ENV` straight in, so they inherit the fix.
+> - Local dev keeps working because the `dev` scripts now set `NODE_ENV=development` explicitly
+>   (7 services), and Vitest sets `NODE_ENV=test`; the deployed `start` scripts stay unset, so they
+>   fail closed unless a DB is wired (which `render.yaml`/`railway.json` do) or `ALLOW_INMEMORY=1` is
+>   set. The signal is now the presence of an explicit dev marker, never the absence of a prod one.
+> - A regression test pins the exact deploy-target case (`nodeEnv: undefined` + no/unreachable DB →
+>   `fail`) that had no coverage before.
+>
+> **Repo-wide inertness sweep (per the RA-4 directive "if this one was wrong, others likely are").**
+> 19 environment-signal checks audited; 7 were the same "unset ⇒ less-safe" shape. Dispositions:
+>
+> - **Fixed here (same NODE_ENV persistence class):** `persistence.ts` (the anchor) + its wallet/
+>   policy call sites (auto-fixed). **`verification-service/index.ts` was the worst case** — it had
+>   **no `resolvePersistencePolicy` and no NODE_ENV backstop at all**, always silently falling back to
+>   an in-memory store on unset/unreachable DB; it now uses the same fail-closed policy.
+> - **New latent finding, filed as RA-10 (separate mechanism, not fixed here):** `attestor-guard.ts:16`
+>   keys the mainnet single-key guard on an **exact passphrase match**, so an unset
+>   `STELLAR_NETWORK_PASSPHRASE` defaults to testnet and **silently bypasses** the M5 guard if a worker
+>   is pointed at mainnet without setting the passphrase. Requires the attestor to be enabled; tracked
+>   for the M5 work.
+> - **Already-documented conditional guards (not new):** the sponsor/relayer scoping
+>   (`wallet-service/server.ts:109`, wired only when the relayer is configured) and the L1
+>   attach-verify (`policy-service/server.ts:97`, wired only when RPC is available) are "absent config
+>   ⇒ skip guard" in shape, but both are intended — the guarded funding/deploy path is itself inert
+>   without that config. The `VERIFY_BUILD_IMAGE` stub switch is loud + already documented. No change.
+> - **Confirmed CORRECT (fail-closed) — do not touch:** the extension's `import.meta.env.COMMAND`
+>   (unset ⇒ `build`/strict), `WXT_PUBLIC_ALLOW_ANY_PAIR_ORIGIN`, `ALLOW_SINGLE_KEY_ATTESTOR`, worker
+>   `DATABASE_URL`, and the gateway CORS/rate-limit/body-cap defaults. The extension is the reference
+>   for the right shape: absence yields the safe branch.
+
+### RA-10 — `attestor-guard` mainnet check is bypassed by an unset passphrase ℹ️ Info → tracked with M5 `[my code]`
+
+`services/worker-service/src/attestor-guard.ts:16`. `attestorNetwork` returns `"mainnet"` only on an
+**exact** `MAINNET_PASSPHRASE` match; an unset `STELLAR_NETWORK_PASSPHRASE` defaults to the testnet
+passphrase (`config.ts:53`), so a worker pointed at a mainnet RPC/registry while forgetting the
+passphrase mis-classifies as testnet and the single-key-on-mainnet refusal (M5) **silently does not
+run**. Surfaced by the RA-4 inertness sweep. Same class as RA-4 (unset ⇒ less-safe) but a different
+signal (network passphrase, not `NODE_ENV`), and it only bites when the attestor is enabled
+(`ATTESTOR_SECRET_KEY` + `ATTESTATION_REGISTRY_ID` set).
+
+> **Status (RA-10): OPEN — tracked with M5.** M5 (attestor-as-multisig) is already a deferred mainnet
+> prerequisite; fold this in there. Fix direction: derive the attestor's network from the same
+> explicit signal the rest of the mainnet posture uses and fail closed when the passphrase is unset
+> but a mainnet registry/RPC is configured, rather than defaulting the classification to testnet.
 
 ### RA-5 — Cleanup builder pays the full asset balance **before** cancelling offers (ignores selling liabilities) 🟡 Medium `[my code]`
 
