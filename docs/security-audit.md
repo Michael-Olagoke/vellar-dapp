@@ -397,6 +397,15 @@ read oracle. Same build-box gating as H2.
   `provider-sdk/src/permissions.ts:38-49`. UX confusion only; the browser scopes storage per
   origin so no privilege inheritance. **Fix (optional):** strip a single trailing dot.
 
+  > **Status (FIX 12/L5): CLOSED.** `normalizeOrigin` now collapses a single trailing dot on the
+  > host (`app.example.com.` → `app.example.com`) by stripping it from `url.hostname` and letting
+  > the URL recompute the origin (so host + port stay consistent). The existing bare-origin guard
+  > (`url.origin !== value`) still runs first, so a dotted host with a path/query is rejected before
+  > the strip, exactly as before. Only ONE dot is removed — a doubled dot stays distinct, since we
+  > canonicalize the one real FQDN convention, not arbitrary garbage. Tests (`permissions.test.ts`):
+  > the dotted and dotless forms map to the same normalized origin (incl. with an explicit port and
+  > on `localhost.`); a doubled trailing dot is not collapsed to the clean form.
+
 - **L6 — Cleanup builder emits all ops into one tx + unpaginated `as`-cast Horizon reads
   `[my code]`** — `lifecycle-service/src/builder.ts:44-103`, `horizon.ts:44-95`.
   Correctness/DoS, **not** fund theft (every tx is unsigned; the user must sign). **Fix:** split

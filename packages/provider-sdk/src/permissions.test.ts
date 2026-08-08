@@ -22,6 +22,33 @@ describe("normalizeOrigin", () => {
   ])("rejects %s", (_label, input) => {
     expect(normalizeOrigin(input)).toBeUndefined();
   });
+
+  // L5: a trailing-dot FQDN ("app.example.com.") is the SAME principal as the
+  // dotless form — collapse the single trailing dot so they don't become two
+  // distinct grant keys.
+  it.each([
+    ["trailing dot host", "https://app.example.com.", "https://app.example.com"],
+    [
+      "trailing dot with explicit port",
+      "https://app.example.com.:8443",
+      "https://app.example.com:8443",
+    ],
+    ["trailing dot on localhost", "http://localhost.", "http://localhost"],
+  ])("normalizes %s to the dotless origin", (_label, input, expected) => {
+    expect(normalizeOrigin(input)).toBe(expected);
+  });
+
+  it("collapses only a SINGLE trailing dot (a doubled dot stays distinct)", () => {
+    // ".." is malformed; we strip one dot, leaving it distinct from the clean
+    // form — we don't try to canonicalize arbitrary garbage.
+    expect(normalizeOrigin("https://app.example.com..")).toBe("https://app.example.com.");
+  });
+
+  it("the dotted and dotless forms map to the SAME normalized origin", () => {
+    expect(normalizeOrigin("https://app.example.com.")).toBe(
+      normalizeOrigin("https://app.example.com"),
+    );
+  });
 });
 
 describe("hasCapability", () => {
