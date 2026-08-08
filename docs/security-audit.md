@@ -356,6 +356,43 @@ read oracle. Same build-box gating as H2.
   `getLatestLedger` widens the on-chain validity window for that one signed entry. **Fix:** use
   the extension's own per-network RPC, or pass a locally-bounded explicit expiration.
 
+  > **Status (FIX 12/L4): CLOSED.** Both halves of the fix are applied: the anchor now comes from
+  > a **trusted per-network RPC** and the window is **explicitly capped**, so the caller-supplied
+  > `wallet.rpcUrl` is entirely out of the expiration path (`apps/extension/lib/signer-expiration.ts`
+  >
+  > - `tx-signer.ts`).
+  >
+  > passkey-kit, given no explicit `expiration`, calls `getLatestLedger()` on `wallet.rpcUrl` and
+  > sets `signatureExpirationLedger = latest + timeout/5` (verified in `passkey-kit@0.14.0`
+  > `kit/tx-ops.js:26,49-57`); it only asserts the result is a u32, no upper bound. `signAuthEntry`
+  > accepts an explicit `expiration` and, when supplied, **never calls `getLatestLedger`** — so we
+  > supply one:
+  >
+  > - **Trusted anchor (Option C).** `resolveTrustedRpcUrl` returns SDF's pinned
+  >   `https://soroban-testnet.stellar.org` for testnet, and the build-time
+  >   `WXT_PUBLIC_MAINNET_RPC_URL` for mainnet — neither is the paired `rpcUrl`. Mainnet with no
+  >   configured RPC **fails closed** (`TrustedRpcUnavailableError`); the anchor fetch itself
+  >   propagates transport errors rather than falling back to the caller endpoint. Chosen over
+  >   reading the tx's own ledger bounds (Soroban txs often carry none, and a control that rejects
+  >   correct transactions gets removed by whoever hits it first).
+  > - **Capped window.** `boundedExpirationLedger` adds **exactly `MAX_EXPIRATION_LEDGERS = 60`**
+  >   (~5 min at ~5s/ledger) — the ADDED span is never anchor-proportional, so an inflated anchor
+  >   cannot widen it — clamped to u32. 60 is a deliberate approval-latency-vs-replay-window
+  >   tradeoff: it must cover the worst realistic approval (user gets the popup, switches apps,
+  >   returns, approves), and the replay exposure traded away is small — the device key is already
+  >   a 7-day expiring co-signer, further bounded by attached policies.
+  > - **Nothing else in the signing path trusts `wallet.rpcUrl` for a security-relevant value.**
+  >   `connectWallet` uses it to confirm the wallet exists and the keyId is a signer, but the
+  >   wallet binding is re-asserted locally (`kit.contractId === wallet.address`, and `contractId`
+  >   is a deterministic local derivation, not an RPC claim), and a lying "you are a signer" cannot
+  >   forge a signature — the device key signs and the real network validates at submit. Only the
+  >   expiration is baked into the signed payload, and that is what this fix removes from the RPC.
+  >
+  > Tests (`signer-expiration.test.ts`, `tx-signer.test.ts`): the added span is always exactly the
+  > cap regardless of anchor size; the cap is 60; mainnet with no RPC throws and signs nothing; the
+  > wired signer fetches the anchor from the pinned testnet endpoint (asserted `!= wallet.rpcUrl`)
+  > and passes the capped `expiration` to `signAuthEntry`.
+
 - **L5 — `normalizeOrigin` accepts trailing-dot FQDNs as distinct principals `[my code]`** —
   `provider-sdk/src/permissions.ts:38-49`. UX confusion only; the browser scopes storage per
   origin so no privilege inheritance. **Fix (optional):** strip a single trailing dot.
