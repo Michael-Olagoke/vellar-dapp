@@ -157,6 +157,41 @@ read oracle. Same build-box gating as H2.
   documented invariant is off by 2×. Overflow is _safe_ (`overflow-checks=true` + `checked_add`,
   panic on None). **Fix:** true sliding window, or document the 2× honestly.
 
+  > **Status (FIX 10): CLOSED by documentation — behavior UNCHANGED.** This is a product
+  > decision, resolved as "keep tumbling, fix every claim" (Option B). The contract is not
+  > modified; the 2× boundary property is now stated honestly everywhere and PINNED by tests:
+  >
+  > - The contract module doc (`spending-limit/src/lib.rs:18-23`) now describes the FIXED
+  >   (tumbling) window and the up-to-2×-across-a-boundary behavior explicitly.
+  > - Two tests assert the property in BOTH directions
+  >   (`spending-limit/src/test.rs`: `boundary_allows_up_to_two_times_limit` and
+  >   `boundary_does_not_allow_more_than_two_times_limit`). A future change to the reset logic
+  >   (e.g. to a sliding window) breaks the first test — flagging that the documented contract
+  >   changed, in either direction.
+  > - The UI copy was corrected: the policy-builder header, the spending-limit card description,
+  >   and the review-step paragraph (`apps/web/app/policies/page.tsx`), plus the template registry
+  >   source of truth (`services/policy-service/src/templates.ts` — description AND comments).
+  >   The `apps/docs/` "rolling window" mislabels are corrected in a separate docs commit.
+  >
+  > **Why Option A (sliding window in the contract) was REJECTED:** a sliding window is a new
+  > wasm hash, so **existing deployed policy instances keep tumbling semantics until detached and
+  > re-attached** — Option A would split users across two different guarantees with **no external
+  > way to tell which a wallet has** (the deployed contract id doesn't reveal the semantics). It
+  > also adds storage + gas on every guarded transfer. Given the docs already recommend pairing
+  > this policy with an authenticated co-signer for a hard cap, the 2× is a bounded, documented
+  > guardrail property, not a defect. **Revisit A only if the spending limit ever becomes a
+  > standalone security boundary rather than a co-signer-paired guardrail.**
+  >
+  > **UI-vs-docs asymmetry worth knowing:** the UI header claimed an EXTERNAL AUDIT the policy
+  > contracts have not had ("Policies come from audited templates … not by a promise"). No audit
+  > report exists in the repo or git history; the only audited artifact is the external
+  > kalepail/passkey-kit smart wallet, which these policies depend on but did not write (the
+  > contracts even self-disclaim "audited" — `verified-recipient/src/lib.rs:16`,
+  > `attestation-registry/src/lib.rs:14`). By contrast, `apps/docs/` was already accurate — it
+  > correctly attributes the audit to passkey-kit and says the policy contract is "testnet only,
+  > not yet audited for mainnet." The docs were written carefully; the UI string was not. **Takeaway:
+  > review UI strings whenever a contract's behavior is documented — that's where overclaims slip in.**
+
 - **M4 — verified-recipient bricks all covered transfers with no live registry `[my code]`** —
   `contracts/policy-templates/verified-recipient/src/lib.rs:184-205`. As a required co-signer it
   rejects the whole auth for any unattested contract; `is_verified` returns false for
@@ -253,6 +288,12 @@ read oracle. Same build-box gating as H2.
   `[my code]`** — `lifecycle-service/src/builder.ts:44-103`, `horizon.ts:44-95`.
   Correctness/DoS, **not** fund theft (every tx is unsigned; the user must sign). **Fix:** split
   by `OPS_PER_TX=100`; add fetch timeouts; paginate/validate Horizon responses.
+  - **L6b — "Safe account cleanup" copy overclaim `[my code]`** — `apps/web/app/page.tsx:46`
+    (live landing) names the cleanup feature "Safe account cleanup." Cleanup **moves funds and
+    merging classic accounts is irreversible**, so "safe" is a claim, not a label. Surfaced while
+    fixing M3's overclaims (grep for "safe"). Handle the copy in the same pass as the L6 cleanup-
+    builder work (right context — the builder + its promise reviewed together). The gitignored
+    `landing-page/VELA Landing.html` has the same string but does not ship; leave it.
 
 - **L7 — 14 high dependency advisories (0 critical) `[dependency]`** — `pnpm-workspace.yaml:16`.
   Most reachable ones config-mitigated (no http2 → find-my-way DoS inert). **Fix:** add

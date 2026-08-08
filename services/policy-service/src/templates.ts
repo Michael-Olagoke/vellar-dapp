@@ -5,9 +5,10 @@ import type { PolicyDefinition } from "@vellar/types";
 // PolicyTemplateRegistry + PolicyValidator (idea.md §6.2; §19 D3: policies
 // come from structured templates, never freeform). Each template declares how
 // it is ENFORCED on-chain — honestly: our configurable spending-limit contract
-// (rolling-window allowance, user-chosen cap) covers spending limits; allowlists
-// and thresholds map to the smart wallet's native SignerLimits; timelock awaits
-// a custom contract in contracts/policy-templates.
+// (cumulative allowance over a FIXED/tumbling window — resets on schedule, so up
+// to 2x the cap can move across a boundary; NOT a sliding window) covers
+// spending limits; allowlists and thresholds map to the smart wallet's native
+// SignerLimits; timelock awaits a custom contract in contracts/policy-templates.
 
 /**
  * VELA configurable spending-limit policy wasm (testnet). Built from
@@ -49,7 +50,7 @@ export const ATTESTATION_REGISTRY_ID = "CBZVS2ETJKCIMRRWUHTZFVMWDACJNYUZ54JIXUJC
 
 /** Stroops per XLM (7 decimals). */
 const STROOPS_PER_XLM = 10_000_000n;
-/** Default rolling window when a policy sets only a daily cap: 24h. */
+/** Default fixed (tumbling) window when a policy sets only a daily cap: 24h. */
 export const DEFAULT_WINDOW_SECONDS = 60 * 60 * 24;
 
 /** Parse a decimal XLM string (e.g. "12.5") to integer stroops. Assumes the
@@ -139,7 +140,7 @@ export const templates: PolicyTemplate[] = [
   {
     type: "spending_limit",
     title: "Spending limit",
-    description: "Cap how much XLM a signer can move within a rolling window.",
+    description: "Cap total XLM a signer can move per fixed period.",
     schema: base.extend({
       type: z.literal("spending_limit"),
       spendingLimits: z
@@ -194,10 +195,11 @@ export function getTemplate(type: string): PolicyTemplate | undefined {
 /**
  * Derive the on-chain constructor args for a spending-limit policy.
  *
- * The contract enforces a CUMULATIVE rolling-window allowance — a per-transfer
- * cap is not a real spending limit (policy signatures are secretless; repeated
- * capped transfers drain the wallet). So `dailyXlm` maps directly to the
- * window allowance over 24h. When only `perTxXlm` is set we still enforce it as
+ * The contract enforces a CUMULATIVE allowance over a FIXED (tumbling) window —
+ * a per-transfer cap is not a real spending limit (policy signatures are
+ * secretless; repeated capped transfers drain the wallet). So `dailyXlm` maps
+ * directly to the window allowance over 24h (resets on a fixed schedule, so up
+ * to 2x can move across a boundary). When only `perTxXlm` is set we still enforce it as
  * a cumulative daily cap (the safe interpretation), never as an unbounded
  * per-tx cap. When both are set, the daily cap is the enforced ceiling and the
  * per-tx value is authoring metadata only.
