@@ -15,12 +15,16 @@ authorizes value transfers authorizes them for everyone. That means a
 per-transaction cap is **not** a spending limit: repeated capped transfers can
 drain the whole balance.
 
-So the user's limit is enforced as a **cumulative allowance over a rolling
-window**: the most anyone can move through the policy is `daily_limit` per
-`window_seconds`. Worst-case loss is bounded to the cap. For a hard guarantee
-that even that bounded amount requires a real signature, the policy can be
-paired — via the granting signer's `SignerLimits` — with an authenticated
-co-signer.
+So the user's limit is enforced as a **cumulative allowance over a fixed
+(tumbling) window** — not a continuously sliding one: `spent` accumulates from
+the first spend of a window and resets to zero once `window_seconds` have
+elapsed since that `window_start`. Because the reset is on a fixed schedule
+rather than sliding, spending near a boundary can move up to **`2 * daily_limit`**
+within a short span (the full cap just before the reset plus the full cap just
+after). The bound is therefore `daily_limit` per fixed window and **at most
+`2 * daily_limit`** across any boundary. Treat this as a spending guardrail, not
+a hard cap. For a hard guarantee, pair the policy — via the granting signer's
+`SignerLimits` — with an authenticated co-signer.
 
 ## Constructor (immutable configuration)
 
@@ -31,7 +35,9 @@ pub fn __constructor(env: Env, wallet: Address, daily_limit: i128, window_second
 - `wallet` — the single smart account this instance is bound to.
 - `daily_limit` — cumulative window allowance, in **stroops** (1 XLM =
   10,000,000 stroops).
-- `window_seconds` — rolling-window length (Vellar uses 24h = 86400 by default).
+- `window_seconds` — fixed (tumbling) window length (Vellar uses 24h = 86400 by
+  default). The window resets on a fixed schedule, so up to `2 * daily_limit` can
+  move across a boundary — see above.
 
 Configuration is written **once** and never mutated — there is no setter. If the
 owner could raise their own cap in-place, the policy would guarantee nothing.
