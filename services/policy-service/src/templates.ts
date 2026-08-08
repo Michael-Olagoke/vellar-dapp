@@ -167,8 +167,7 @@ export const templates: PolicyTemplate[] = [
   {
     type: "verified_only",
     title: "Verified contracts only",
-    description:
-      "The signer may only transact through contracts with verified (reproducible) source — enforced on-chain against the attestation registry. Verified means provenance, not audited or safe.",
+    description: "Restrict a signer to contracts with verified source.",
     schema: base.extend({
       type: z.literal("verified_only"),
     }),
