@@ -15,6 +15,11 @@ import type {
   ProviderRequestMessage,
 } from "../lib/messages";
 import { routeProviderRequest } from "../lib/router";
+import {
+  pairOriginPolicy,
+  PairOriginsMisconfiguredError,
+  type PairOriginPolicy,
+} from "../lib/pair-origins";
 import { addGrant, loadState, revokeGrant, setPairedWallet } from "../lib/state";
 
 // Background service worker (technical-doc.md §6.2B, §7.3): routes validated
@@ -30,6 +35,28 @@ export default defineBackground(() => {
   // Track the open approval window so we don't spawn a new one per request.
   let approvalWindowId: number | undefined;
 
+  // L3: resolve the pair-origin allowlist once at startup. A misconfigured
+  // production build (no origins, no escape hatch) throws — we DISABLE pairing
+  // rather than fall back, so an unconfigured prod artifact can never pair with
+  // an arbitrary origin. An empty allowlist (`[]`) refuses every `pair`.
+  let pairOrigins: PairOriginPolicy;
+  try {
+    pairOrigins = pairOriginPolicy();
+    if (pairOrigins === "any") {
+      console.warn(
+        "[vellar] WXT_PUBLIC_ALLOW_ANY_PAIR_ORIGIN is set — ANY origin may pair the extension. " +
+          "Do not ship this in a production build.",
+      );
+    }
+  } catch (err) {
+    if (err instanceof PairOriginsMisconfiguredError) {
+      console.error(`[vellar] pairing disabled: ${err.message}`);
+      pairOrigins = []; // fail closed: no origin may pair
+    } else {
+      throw err;
+    }
+  }
+
   browser.windows.onRemoved.addListener((closedId) => {
     if (closedId === approvalWindowId) approvalWindowId = undefined;
   });
@@ -44,7 +71,7 @@ export default defineBackground(() => {
     }
 
     const state = await loadState(browserKv);
-    const decision = routeProviderRequest(message.envelope.request, origin, state);
+    const decision = routeProviderRequest(message.envelope.request, origin, state, pairOrigins);
 
     if (decision.kind === "respond") {
       if (decision.revokeGrant && state.pairedWallet) {

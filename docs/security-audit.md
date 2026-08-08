@@ -324,6 +324,33 @@ read oracle. Same build-box gating as H2.
   deep-link target (phishing). Downgraded (needs user to open attacker page; passkey still gates
   signing). **Fix:** env-configured allowlist of canonical Vellar web origins.
 
+  > **Status (FIX 12/L3): CLOSED.** `routeProviderRequest` now gates `pair` on a fail-closed
+  > web-app-origin allowlist (`apps/extension/lib/pair-origins.ts` + `router.ts`); an off-list
+  > origin is refused `unauthorized` **before any approval popup**, so an attacker page can never
+  > become `webAppOrigin` or seed the paired `rpcUrl` (which closes L4's precondition).
+  >
+  > The allowlist is resolved **fail-closed, matching FIX 7's boot posture** — it does not
+  > silently degrade the way the in-memory DB fallback would:
+  >
+  > - **Trust signal:** the dev/prod split keys off `import.meta.env.COMMAND` (`"build"` vs
+  >   `"serve"`), which WXT/Vite **injects at bundle time per artifact** — a _runtime_ env var
+  >   cannot spoof it, unlike a `NODE_ENV` read. (`import.meta.env.MODE` would work too;
+  >   `COMMAND` is the WXT-native, typed one in `.wxt/types/globals.d.ts`.)
+  > - **Dev build, nothing configured:** falls back to `http://localhost:3000` / `:5173` only.
+  > - **Production build, nothing configured:** `pairOriginPolicy()` **throws**; the background
+  >   worker catches it and sets the policy to `[]` — **pairing is disabled**, not opened to
+  >   localhost or to any origin. An unconfigured prod artifact simply cannot pair.
+  > - **Escape hatch is named + warned, never silent:** `WXT_PUBLIC_ALLOW_ANY_PAIR_ORIGIN=1`
+  >   (same shape as `ALLOW_INMEMORY` / `ALLOW_SINGLE_KEY_ATTESTOR`) disables the restriction and
+  >   logs a warning on every startup; it is in no committed manifest.
+  > - Origins come from `WXT_PUBLIC_WEB_APP_ORIGINS` (comma-separated), each canonicalized through
+  >   `normalizeOrigin` (a single trailing slash tolerated; paths/junk dropped); documented in
+  >   `apps/extension/README.md`.
+  >
+  > Tests (`pair-origins.test.ts`, `router.test.ts`): dev+empty → localhost only; prod+empty →
+  > throws (no fallback); prod+origins → exactly those; a non-listed origin → refused in both
+  > modes; the `"any"` escape hatch → any origin may pair.
+
 - **L4 — Device signing consults attacker-controllable `rpcUrl` for the expiration ledger
   `[dependency]`** — `extension/lib/tx-signer.ts:56-61,83`. Precondition is L3; an inflated
   `getLatestLedger` widens the on-chain validity window for that one signed entry. **Fix:** use

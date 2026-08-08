@@ -5,6 +5,7 @@ import {
   type ProviderRequest,
   type ResponsePayload,
 } from "@vellar/provider-sdk";
+import { isPairOriginAllowed, type PairOriginPolicy } from "./pair-origins";
 import type { ExtensionState } from "./state";
 
 // Pure request router (technical-doc.md §7.3): decides, from validated
@@ -25,6 +26,10 @@ export function routeProviderRequest(
   request: ProviderRequest,
   rawOrigin: string,
   state: ExtensionState,
+  // L3: which web-app origins may pair. Resolved fail-closed from the build
+  // (see pair-origins.ts). Defaults to "any" so the pure router stays trivially
+  // testable; the background worker always passes the real policy.
+  pairOrigins: PairOriginPolicy = "any",
 ): RouteDecision {
   const origin = normalizeOrigin(rawOrigin);
   if (!origin) {
@@ -35,6 +40,14 @@ export function routeProviderRequest(
   // Always requires explicit popup approval (origin + wallet shown), and the
   // subsequent addEd25519 still needs the user's passkey in the web app.
   if (request.method === "pair") {
+    // L3: only the Vellar web app may pair — it becomes the deep-link target
+    // and supplies the paired wallet's rpcUrl. An off-allowlist page is refused
+    // before any popup so an attacker site can't poison webAppOrigin/rpcUrl.
+    if (!isPairOriginAllowed(pairOrigins, origin)) {
+      return respond(
+        errorPayload("unauthorized", "This origin is not permitted to pair the Vellar extension"),
+      );
+    }
     return { kind: "needs-approval", origin };
   }
 

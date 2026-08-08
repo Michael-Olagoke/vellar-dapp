@@ -3,3 +3,13 @@
 Companion execution surface (technical-doc.md §4.2, §12): popup UI, background service worker, content/injection bridge, dApp connection approvals, transaction signing popup, account selector, permission management, deep-link handoff to web app.
 
 Design principle: high-frequency wallet actions live here; advanced workflows route back to the web app. No silent signing; origin always displayed (technical-doc.md §8.2).
+
+## Configuration
+
+Build-time public env (WXT inlines `WXT_PUBLIC_*` into the client bundle):
+
+- `WXT_PUBLIC_API_URL` — verification API gateway. Optional; defaults to the public gateway.
+- `WXT_PUBLIC_WEB_APP_ORIGINS` — **comma-separated https origins allowed to pair** the extension (the Vellar web app). Only a listed origin can become the deep-link target and supply the paired wallet's `rpcUrl`.
+  - A **production build** (`wxt build`) with this unset **refuses to enable pairing** — it fails closed rather than trusting an arbitrary origin. Set it for every production build.
+  - A **dev build** (`wxt dev`) with this unset falls back to `http://localhost:3000` and `http://localhost:5173`.
+- `WXT_PUBLIC_ALLOW_ANY_PAIR_ORIGIN` — set to `1` to explicitly disable the pair-origin restriction (any origin may pair). Named escape hatch only; logs a warning on every startup. **Never set this in a production build.**
