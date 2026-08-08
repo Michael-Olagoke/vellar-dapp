@@ -771,12 +771,24 @@ XDR-decoding assertion added in remediation for the same pattern (does the fixtu
 Three instances of the pattern (scope.test.ts + L1 + FIX-1's absence). Only FIX 2 builds its fixture
 the way the kit actually produces the value.
 
-> **Status (RA-9): OPEN — fixed alongside RA-1.** Rule going forward: any test that asserts on a
-> decoded passkey-kit XDR shape must construct its fixture from the **real kit signing/deploy path**
-> (or through the passkey-kit-sdk `Signer` spec), so a kit shape-change breaks the test rather than
-> hiding behind it. This pass: build RA-1's scope/tx-signer fixtures kit-derived; add a
-> `needsSponsorRebuild` test feeding real V2 + `sourceAccount` entries; encode L1's `buildAddPolicyXdr`
-> through the `Signer` spec's 5-element Policy tuple.
+> **Status (RA-9): CLOSED.** All three instances of the pattern closed:
+>
+> - **RA-1 (scope + tx-signer):** fixtures default to **V2** and parametrize v1/v2/delegates — a
+>   V1-only regression fails (see RA-1).
+> - **FIX-1 `needsSponsorRebuild`:** now has a test (`sponsor.test.ts`) — the predicate is exercised
+>   with real V2/V1/delegates address credentials (→ route to sponsor), source-account and mixed
+>   address+source (→ false), plus multi-op / empty-auth / non-invoke / unparseable guards. A
+>   regression to a positive V1-only check now fails.
+> - **L1 `buildAddPolicyXdr`:** rebuilt to the kit's **real 5-element** `Signer::Policy` tuple
+>   `[Symbol('Policy'), Address, SignerExpiration::None, SignerLimits::None, SignerStorage::Persistent]`
+>   (matching `passkey-kit` `buildPolicySigner` + the `passkey-kit-sdk` `Signer` UDT), replacing the
+>   hand-built 3-element vec. A new assertion pins the tuple **arity** so a kit encoding drift is
+>   visible; the decode path still finds the policy address in the realistic shape.
+>
+> `passkey-kit-sdk` is only a transitive dep here, so the fixtures reproduce the kit's on-the-wire
+> shape element-for-element rather than importing the `Spec` directly; each is tied to the kit source
+> lines it mirrors. Rule going forward: any test asserting on a decoded passkey-kit XDR shape must be
+> built from (or pinned against) the real kit shape, never hand-fit to the parser.
 
 ### Re-audit bottom line
 

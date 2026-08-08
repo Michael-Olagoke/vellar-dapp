@@ -1,6 +1,93 @@
+import {
+  Account,
+  Address,
+  Keypair,
+  Operation,
+  TransactionBuilder,
+  xdr,
+} from "@stellar/stellar-sdk";
 import { describe, expect, it } from "vitest";
-import { consumeSponsorBudget, enforceFeeCap, SPONSOR_DEFAULT_MAX_FEE_STROOPS } from "./sponsor";
+import {
+  consumeSponsorBudget,
+  enforceFeeCap,
+  needsSponsorRebuild,
+  SPONSOR_DEFAULT_MAX_FEE_STROOPS,
+} from "./sponsor";
 import { SubmissionError } from "./relayer";
+
+const PASSPHRASE = "Test SDF Network ; September 2015";
+const WALLET = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+
+// RA-9/FIX-1: needsSponsorRebuild had NO test. Its filter is a NEGATIVE match
+// (accept unless sorobanCredentialsSourceAccount), so it correctly accepts the
+// V2 credentials passkey-kit@0.14 actually emits — but that was safe by luck,
+// not by test. These fixtures build the REAL V2 shape (plus V1/delegates/
+// source-account) so a regression to a positive V1-only check fails here.
+type CredKind = "v1" | "v2" | "delegates" | "source";
+
+function addrCreds(subject: string): xdr.SorobanAddressCredentials {
+  return new xdr.SorobanAddressCredentials({
+    address: Address.fromString(subject).toScAddress(),
+    nonce: xdr.Int64.fromString("0"),
+    signatureExpirationLedger: 0,
+    signature: xdr.ScVal.scvVoid(),
+  });
+}
+
+function credentialsFor(subject: string, kind: CredKind): xdr.SorobanCredentials {
+  switch (kind) {
+    case "source":
+      return xdr.SorobanCredentials.sorobanCredentialsSourceAccount();
+    case "v1":
+      return xdr.SorobanCredentials.sorobanCredentialsAddress(addrCreds(subject));
+    case "v2":
+      return xdr.SorobanCredentials.sorobanCredentialsAddressV2(addrCreds(subject));
+    case "delegates":
+      return xdr.SorobanCredentials.sorobanCredentialsAddressWithDelegates(
+        new xdr.SorobanAddressCredentialsWithDelegates({
+          addressCredentials: addrCreds(subject),
+          delegates: [],
+        }),
+      );
+  }
+}
+
+function invokeOp(authKinds: CredKind[]): xdr.Operation {
+  const auth = authKinds.map(
+    (kind) =>
+      new xdr.SorobanAuthorizationEntry({
+        credentials: credentialsFor(WALLET, kind),
+        rootInvocation: new xdr.SorobanAuthorizedInvocation({
+          function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+            new xdr.InvokeContractArgs({
+              contractAddress: Address.fromString(WALLET).toScAddress(),
+              functionName: "transfer",
+              args: [],
+            }),
+          ),
+          subInvocations: [],
+        }),
+      }),
+  );
+  return Operation.invokeHostFunction({
+    func: xdr.HostFunction.hostFunctionTypeInvokeContract(
+      new xdr.InvokeContractArgs({
+        contractAddress: Address.fromString(WALLET).toScAddress(),
+        functionName: "transfer",
+        args: [],
+      }),
+    ),
+    auth,
+  });
+}
+
+/** Build a signed-shaped tx from operations, so needsSponsorRebuild parses it. */
+function buildTx(ops: xdr.Operation[]): string {
+  const account = new Account(Keypair.random().publicKey(), "0");
+  const b = new TransactionBuilder(account, { fee: "100", networkPassphrase: PASSPHRASE });
+  for (const op of ops) b.addOperation(op);
+  return b.setTimeout(30).build().toXDR();
+}
 
 describe("enforceFeeCap", () => {
   it("accepts a simulated fee at or below the cap", () => {
@@ -69,5 +156,41 @@ describe("consumeSponsorBudget (FIX 3, fails closed)", () => {
     await expect(consumeSponsorBudget("100", budget, "testnet")).rejects.toMatchObject({
       code: "sponsor_budget_exceeded",
     });
+  });
+});
+
+describe("needsSponsorRebuild (routing predicate — RA-9/FIX-1)", () => {
+  it.each(["v2", "v1", "delegates"] as const)(
+    "returns true for a single-op invoke with a %s address credential (the sponsor-rebuild shape)",
+    (kind) => {
+      // V2 is what passkey-kit@0.14 actually signs; all address-bound variants
+      // must route to the sponsor rebuild, none skipped.
+      expect(needsSponsorRebuild(buildTx([invokeOp([kind])]), PASSPHRASE)).toBe(true);
+    },
+  );
+
+  it("returns false when ANY auth entry is source-account (a deploy — relayer handles it)", () => {
+    expect(needsSponsorRebuild(buildTx([invokeOp(["source"])]), PASSPHRASE)).toBe(false);
+    // Mixed: one address + one source-account still fails the every() guard.
+    expect(needsSponsorRebuild(buildTx([invokeOp(["v2", "source"])]), PASSPHRASE)).toBe(false);
+  });
+
+  it("returns false for a multi-op tx (only single-op invokes are rebuilt)", () => {
+    expect(needsSponsorRebuild(buildTx([invokeOp(["v2"]), invokeOp(["v2"])]), PASSPHRASE)).toBe(
+      false,
+    );
+  });
+
+  it("returns false for an invoke with empty auth (nothing to attribute)", () => {
+    expect(needsSponsorRebuild(buildTx([invokeOp([])]), PASSPHRASE)).toBe(false);
+  });
+
+  it("returns false for a non-invokeHostFunction op", () => {
+    const bump = Operation.bumpSequence({ bumpTo: "0" });
+    expect(needsSponsorRebuild(buildTx([bump]), PASSPHRASE)).toBe(false);
+  });
+
+  it("returns false for an unparseable xdr rather than throwing", () => {
+    expect(needsSponsorRebuild("not-an-xdr", PASSPHRASE)).toBe(false);
   });
 });

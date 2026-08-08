@@ -22,20 +22,39 @@ const POLICY = "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUWDA";
 const OTHER_WALLET = "CB64D3G7SM2RTH6JSGG34DDTFTQ5CFDKVDZJZSODMCX4NJ2HV2KN7OHT";
 const OTHER_POLICY = "CAFK7NMQOT7G2SKMREDUII3EOK4APIY54WIK6CVGY72XWFE76YFRDF67";
 
-/** Build an add_signer(Policy) tx XDR, as kit.addPolicy produces: an
- * invokeContract on the WALLET calling add_signer with a Signer::Policy enum
- * (a vec: [symbol('Policy'), address(policy), void]). */
+/**
+ * Build an `add_signer(Policy)` tx XDR the way `kit.addPolicy` REALLY produces
+ * it. passkey-kit's `buildPolicySigner` (wallet-ops.js:73-83) emits the native
+ * `Signer::Policy` = `{tag:"Policy", values:[policy, expiration, limits, store]}`,
+ * which the contract spec (`passkey-kit-sdk` `Signer` UDT:
+ * `values:[string, SignerExpiration, SignerLimits, SignerStorage]`) encodes as a
+ * **5-element** vec, NOT the 3-element `[Symbol, Address, Void]` the earlier
+ * fixture hand-built to match the parser (RA-9). For the standalone attach the
+ * kit passes: expiration `None`, limits `None`, storage `Persistent`.
+ *
+ * A `passkey-kit-sdk` `Spec.funcArgsToScVals` would be strictly better, but that
+ * package is only a transitive dep here; this reproduces the same on-the-wire
+ * shape element-for-element so a tuple-arity/position drift breaks the test.
+ */
+function buildPolicySignerScVal(policy: string): xdr.ScVal {
+  return xdr.ScVal.scvVec([
+    xdr.ScVal.scvSymbol("Policy"),
+    nativeToScVal(Address.fromString(policy), { type: "address" }), // policy address
+    xdr.ScVal.scvVoid(), // SignerExpiration::None (Option<u64> absent)
+    xdr.ScVal.scvVoid(), // SignerLimits::None
+    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Persistent")]), // SignerStorage::Persistent
+  ]);
+}
+
 function buildAddPolicyXdr(opts: {
   wallet: string;
   policy: string;
   fn?: string;
   passphrase?: string;
+  /** Override the signer arg entirely (to test a shape the scan must still handle). */
+  signerScVal?: xdr.ScVal;
 }): string {
-  const signer = xdr.ScVal.scvVec([
-    xdr.ScVal.scvSymbol("Policy"),
-    nativeToScVal(Address.fromString(opts.policy), { type: "address" }),
-    xdr.ScVal.scvVoid(),
-  ]);
+  const signer = opts.signerScVal ?? buildPolicySignerScVal(opts.policy);
   const func = xdr.HostFunction.hostFunctionTypeInvokeContract(
     new xdr.InvokeContractArgs({
       contractAddress: Address.fromString(opts.wallet).toScAddress(),
@@ -68,6 +87,17 @@ describe("verifyAttachTx (L1 full attach verification)", () => {
     await expect(
       verifyAttachTx(successLookup(xdrStr), { txHash: "h", ...target }),
     ).resolves.toBeUndefined();
+  });
+
+  it("uses the real 5-element Signer::Policy tuple, not a hand-shaped 3-element vec (RA-9)", () => {
+    // Pin the fixture arity so this test is exercising the kit's actual shape.
+    // If the kit's Signer::Policy encoding changes arity, this assertion — and
+    // therefore the decode path under test — moves with it instead of silently
+    // passing on a stale hand-built shape.
+    const signer = buildPolicySignerScVal(POLICY);
+    expect(signer.switch().name).toBe("scvVec");
+    expect(signer.vec()?.length).toBe(5);
+    expect(signer.vec()![0]!.sym().toString()).toBe("Policy");
   });
 
   it("rejects (mismatch) a valid tx that attached a DIFFERENT policy", async () => {
