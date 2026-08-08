@@ -254,6 +254,30 @@ read oracle. Same build-box gating as H2.
   **refuted** (`close-prs-*.yml` only _close_ PRs — no checkout, no merge). **Fix:**
   `autoDeploy: false`, required status checks on main, `pnpm audit` gate.
 
+  > **Status (FIX 11): PARTIALLY CLOSED — repo-side done, two settings remain manual.**
+  > Done in-repo on this branch:
+  >
+  > - **`pnpm audit --audit-level=high` added to CI** (`.github/workflows/ci.yml`, after Install):
+  >   a newly-introduced high/critical advisory now blocks the build. Currently green (FIX 8 took
+  >   the count to 0 high).
+  > - **`autoDeploy: false` on the Render service** (`render.yaml`): Render no longer ships every
+  >   push to `main`; deploy is a manual/tagged action after CI passes.
+  >
+  > **Remains MANUAL (cannot be set from a committed file — dashboard/settings only):**
+  >
+  > 1. **GitHub branch protection on `main`** — mark the `ci` check (and, if desired,
+  >    `pnpm audit`) as a **required status check**, and require PRs (no direct pushes). This is
+  >    a repo Settings → Branches value; nothing in the repo can enforce it.
+  > 2. **Railway `autoDeploy`** — `railway.json` has no autoDeploy field; Railway's auto-deploy is
+  >    a dashboard setting. If Railway is a live target, turn it off there too (or confirm Render
+  >    is the only deploy target and Railway is unused).
+  > 3. **Confirm which platform is actually live** (V6, still open) — the gate only matters on the
+  >    platform that deploys. If only Render is live, item 2 is moot.
+  >
+  > Until the branch protection (item 1) is set, CI is a signal, not a gate — a maintainer can
+  > still merge red. The repo-side changes make the gate _possible_; the dashboard settings make
+  > it _binding_.
+
 ---
 
 ## 🟢 LOW
