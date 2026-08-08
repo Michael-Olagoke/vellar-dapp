@@ -750,6 +750,29 @@ dashboard settings. Classify each as closed-by-doc / deferred / config-only, nev
 
 > **Status (RA-8): informational.** No code change; ensures the closure ledger stays honest.
 
+### RA-9 — Fixture-defect pattern: XDR-decoding tests built to match the code, not the kit ℹ️ Info → drives RA-1 `[my code]`
+
+RA-1 is a **test-fixture failure as much as a code failure** — `scope.test.ts` built **V1**
+credential fixtures, so the suite validated the V1-only bug instead of catching it. Auditing every
+XDR-decoding assertion added in remediation for the same pattern (does the fixture match what
+`passkey-kit@0.14.0` really produces, or what the implementation happens to parse?):
+
+| Remediation | Fixture site | Verdict | Kit-shape change that slips past |
+| --- | --- | --- | --- |
+| **FIX 2** derivation gate | `derivation.test.ts:17` (pinned deployer, verified against the kit) + live `deriveWalletContractId` | **KIT-DERIVED (robust)** | none kit-shaped; a real seed/deployer drift breaks the pinned-pubkey assertion loudly |
+| **FIX 1** `needsSponsorRebuild` | **no fixture at all** — `sponsor.test.ts` covers only `enforceFeeCap` / `consumeSponsorBudget` | **UNTESTED** | any change to the credential-type filter — nothing asserts on V2, the `sourceAccount` exclusion, or the one-op/invokeHostFunction/has-auth guards. (The filter is a _negative_ `!== sorobanCredentialsSourceAccount` check, so it accepts V2 correctly _today_ — safe by luck, not by test.) |
+| **L1** attach-tx decode | `verify-attach.test.ts:34-38` `buildAddPolicyXdr` | **CODE-SHAPED (same defect class as `scope.test.ts`)** | the helper builds a **3-element** `[Symbol('Policy'), Address, Void]` vec, but the kit's real `Signer::Policy` is a **5-element** tuple `[Symbol('Policy'), Address, Vec[Void], Vec[Void], Vec[Symbol('Persistent')]]`. It passes only because `collectAddresses` scans for the address _anywhere_ in the args and the function name is correct. A kit change to where the address is embedded breaks production while the test stays green. |
+
+Three instances of the pattern (scope.test.ts + L1 + FIX-1's absence). Only FIX 2 builds its fixture
+the way the kit actually produces the value.
+
+> **Status (RA-9): OPEN — fixed alongside RA-1.** Rule going forward: any test that asserts on a
+> decoded passkey-kit XDR shape must construct its fixture from the **real kit signing/deploy path**
+> (or through the passkey-kit-sdk `Signer` spec), so a kit shape-change breaks the test rather than
+> hiding behind it. This pass: build RA-1's scope/tx-signer fixtures kit-derived; add a
+> `needsSponsorRebuild` test feeding real V2 + `sourceAccount` entries; encode L1's `buildAddPolicyXdr`
+> through the `Signer` spec's 5-element Policy tuple.
+
 ### Re-audit bottom line
 
 - **Closed by passing test (verified by reading assertions):** C1/H1/V2, V1 derivation gate, H2, H3,
