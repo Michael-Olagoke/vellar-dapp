@@ -11,7 +11,12 @@ import { buildServer, type VerificationServiceDeps } from "./server";
 // warning is logged) — the submit/read API still works for local dev.
 
 const config = configFromEnv();
-const deps: VerificationServiceDeps = {};
+const deps: VerificationServiceDeps = {
+  // Queue-depth cap (M7); env-overridable. Default 1000 active records.
+  maxActiveQueue: process.env.VERIFY_QUEUE_MAX_ACTIVE
+    ? Number(process.env.VERIFY_QUEUE_MAX_ACTIVE)
+    : undefined,
+};
 
 let closeDb: (() => Promise<void>) | undefined;
 if (config.databaseUrl) {

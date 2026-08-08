@@ -55,7 +55,11 @@ export interface PolicyDefinition {
 
 // --- Contract Verification Module (idea.md §6.3) ---
 
-export type VerificationStatus = "unverified" | "submitted" | "building" | "verified" | "failed";
+// "dead_letter": a job reclaimed and re-run VERIFY_MAX_ATTEMPTS times without
+// reaching a terminal state (security-audit.md M7) — parked so a poisoned job
+// can't loop forever.
+export type VerificationStatus =
+  "unverified" | "submitted" | "building" | "verified" | "failed" | "dead_letter";
 
 export interface VerificationRecord {
   id: string;

@@ -23,6 +23,15 @@ export interface WorkerRuntimeConfig {
   attestationTtlLedgers: number | undefined;
   /** Upgrade-sweep interval (default 10 min). */
   attestationSweepMs: number;
+  /** Reaper (M7): a 'building' row older than this is reclaimed. MUST exceed the
+   * max real build time (buildTimeoutSeconds) so a live build is never reaped.
+   * Default 15 min = 1.5x the 10-min build timeout. */
+  reapTimeoutMs: number;
+  /** Reaper interval — how often to sweep for stranded rows. Default 5 min. */
+  reapIntervalMs: number;
+  /** Max claim attempts before a stranded job is parked in 'dead_letter'
+   * (default 3: a transient crash gets 2 retries, a poisoned job parks). */
+  maxBuildAttempts: number;
 }
 
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
@@ -46,6 +55,9 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerRunti
       ? Number(env.ATTESTATION_TTL_LEDGERS)
       : undefined,
     attestationSweepMs: env.ATTESTATION_SWEEP_MS ? Number(env.ATTESTATION_SWEEP_MS) : 600_000,
+    reapTimeoutMs: env.VERIFY_REAP_TIMEOUT_MS ? Number(env.VERIFY_REAP_TIMEOUT_MS) : 900_000,
+    reapIntervalMs: env.VERIFY_REAP_INTERVAL_MS ? Number(env.VERIFY_REAP_INTERVAL_MS) : 300_000,
+    maxBuildAttempts: env.VERIFY_MAX_ATTEMPTS ? Number(env.VERIFY_MAX_ATTEMPTS) : 3,
   };
 }
 
