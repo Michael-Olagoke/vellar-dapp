@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { createMemoryAuditLog, type AuditLog } from "./repository";
+import {
+  Account,
+  Address,
+  Keypair,
+  Operation,
+  TransactionBuilder,
+  xdr,
+} from "@stellar/stellar-sdk";
+import { createMemoryAuditLog, createMemoryWalletRepository, type AuditLog } from "./repository";
 import { createUnconfiguredSubmitter, SubmissionError, type TransactionSubmitter } from "./relayer";
 import { buildServer } from "./server";
+import { deriveWalletContractId } from "./derivation";
 
 function workingSubmitter(): TransactionSubmitter {
   return { submit: vi.fn().mockResolvedValue({ hash: "txhash123" }) };
@@ -179,6 +188,277 @@ describe("GET /wallet/session/:id", () => {
     const server = build(workingSubmitter());
     const res = await server.inject({ url: "/wallet/session/does-not-exist" });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("GET /health readiness (FIX 7)", () => {
+  it("200 when no probe is wired (dev default)", async () => {
+    const server = build(workingSubmitter());
+    expect((await server.inject({ url: "/health" })).statusCode).toBe(200);
+  });
+
+  it("503 when the readiness probe reports the persistence layer is down", async () => {
+    app = buildServer({ submitter: workingSubmitter(), isReady: () => false });
+    const res = await app.inject({ url: "/health" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().status).toBe("unavailable");
+  });
+});
+
+describe("POST /wallet/submit fails closed when scope check errors (FIX 7 mid-run)", () => {
+  const PASSPHRASE = "Test SDF Network ; September 2015";
+  const KNOWN_WALLET = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+
+  function buildInvokeTx(subject: string): string {
+    const account = new Account(Keypair.random().publicKey(), "0");
+    const addr = Address.fromString(subject);
+    const authEntry = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
+        new xdr.SorobanAddressCredentials({
+          address: addr.toScAddress(),
+          nonce: xdr.Int64.fromString("0"),
+          signatureExpirationLedger: 0,
+          signature: xdr.ScVal.scvVoid(),
+        }),
+      ),
+      rootInvocation: new xdr.SorobanAuthorizedInvocation({
+        function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+          new xdr.InvokeContractArgs({
+            contractAddress: addr.toScAddress(),
+            functionName: "transfer",
+            args: [],
+          }),
+        ),
+        subInvocations: [],
+      }),
+    });
+    const op = Operation.invokeHostFunction({
+      func: xdr.HostFunction.hostFunctionTypeInvokeContract(
+        new xdr.InvokeContractArgs({
+          contractAddress: addr.toScAddress(),
+          functionName: "transfer",
+          args: [],
+        }),
+      ),
+      auth: [authEntry],
+    });
+    return new TransactionBuilder(account, { fee: "100", networkPassphrase: PASSPHRASE })
+      .addOperation(op)
+      .setTimeout(30)
+      .build()
+      .toXDR();
+  }
+
+  it("returns 503 (not 500, not sponsored) when the wallet repo throws mid-run", async () => {
+    const submitter = workingSubmitter();
+    const wallets = createMemoryWalletRepository();
+    // Simulate a dropped DB connection during the scope lookup.
+    wallets.existsByContractId = async () => {
+      throw new Error("connection terminated");
+    };
+    app = buildServer({ submitter, wallets, networkPassphrase: PASSPHRASE });
+    const res = await app.inject({
+      method: "POST",
+      url: "/wallet/submit",
+      payload: { signedXdr: buildInvokeTx(KNOWN_WALLET), network: "testnet" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("persistence_unavailable");
+    expect(submitter.submit).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /wallet/create derivation gate (V1)", () => {
+  const PASSPHRASE = "Test SDF Network ; September 2015";
+  const KEY_ID = "AAECAwQFBgcICQoLDA0ODw";
+
+  it("accepts a create whose contractId equals derive(keyId)", async () => {
+    const derived = deriveWalletContractId(KEY_ID, { networkPassphrase: PASSPHRASE });
+    app = buildServer({ submitter: workingSubmitter(), networkPassphrase: PASSPHRASE });
+    const res = await app.inject({
+      method: "POST",
+      url: "/wallet/create",
+      payload: { keyId: KEY_ID, contractId: derived, network: "testnet", signedTx: "xdr" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().contractId).toBe(derived);
+  });
+
+  it("rejects (403) a create whose contractId does not equal derive(keyId), before submission", async () => {
+    const submitter = workingSubmitter();
+    app = buildServer({ submitter, networkPassphrase: PASSPHRASE });
+    const res = await app.inject({
+      method: "POST",
+      url: "/wallet/create",
+      payload: {
+        keyId: KEY_ID,
+        contractId: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        network: "testnet",
+        signedTx: "xdr",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("contract_id_mismatch");
+    expect(submitter.submit).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /wallet/create budget line (FIX 3)", () => {
+  const PASSPHRASE = "Test SDF Network ; September 2015";
+  const KEY_ID = "AAECAwQFBgcICQoLDA0ODw";
+
+  it("consumes the create budget and proceeds when allowed", async () => {
+    const derived = deriveWalletContractId(KEY_ID, { networkPassphrase: PASSPHRASE });
+    const tryConsume = vi.fn().mockResolvedValue({ ok: true });
+    app = buildServer({
+      submitter: workingSubmitter(),
+      networkPassphrase: PASSPHRASE,
+      budget: { tryConsume },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/wallet/create",
+      payload: { keyId: KEY_ID, contractId: derived, network: "testnet", signedTx: "xdr" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(tryConsume).toHaveBeenCalledWith({ line: "create", network: "testnet", stroops: 0n });
+  });
+
+  it("returns 503 (create_budget_exceeded) and does NOT submit when the budget refuses", async () => {
+    const derived = deriveWalletContractId(KEY_ID, { networkPassphrase: PASSPHRASE });
+    const submitter = workingSubmitter();
+    app = buildServer({
+      submitter,
+      networkPassphrase: PASSPHRASE,
+      budget: { tryConsume: async () => ({ ok: false, reason: "budget_exceeded" }) },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/wallet/create",
+      payload: { keyId: KEY_ID, contractId: derived, network: "testnet", signedTx: "xdr" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("create_budget_exceeded");
+    expect(submitter.submit).not.toHaveBeenCalled();
+  });
+
+  it("fails closed: a budget accounting error refuses the create", async () => {
+    const derived = deriveWalletContractId(KEY_ID, { networkPassphrase: PASSPHRASE });
+    const submitter = workingSubmitter();
+    app = buildServer({
+      submitter,
+      networkPassphrase: PASSPHRASE,
+      budget: {
+        tryConsume: async () => {
+          throw new Error("db down");
+        },
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/wallet/create",
+      payload: { keyId: KEY_ID, contractId: derived, network: "testnet", signedTx: "xdr" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(submitter.submit).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /wallet/submit funding-path scoping (C1/H1/V2)", () => {
+  const PASSPHRASE = "Test SDF Network ; September 2015";
+  const KNOWN_WALLET = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+  const OTHER_CONTRACT = "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUWDA";
+
+  function buildInvokeTx(subject: string): string {
+    const source = Keypair.random();
+    const account = new Account(source.publicKey(), "0");
+    const addr = Address.fromString(subject);
+    const authEntry = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
+        new xdr.SorobanAddressCredentials({
+          address: addr.toScAddress(),
+          nonce: xdr.Int64.fromString("0"),
+          signatureExpirationLedger: 0,
+          signature: xdr.ScVal.scvVoid(),
+        }),
+      ),
+      rootInvocation: new xdr.SorobanAuthorizedInvocation({
+        function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+          new xdr.InvokeContractArgs({
+            contractAddress: addr.toScAddress(),
+            functionName: "transfer",
+            args: [],
+          }),
+        ),
+        subInvocations: [],
+      }),
+    });
+    const op = Operation.invokeHostFunction({
+      func: xdr.HostFunction.hostFunctionTypeInvokeContract(
+        new xdr.InvokeContractArgs({
+          contractAddress: addr.toScAddress(),
+          functionName: "transfer",
+          args: [],
+        }),
+      ),
+      auth: [authEntry],
+    });
+    return new TransactionBuilder(account, { fee: "100", networkPassphrase: PASSPHRASE })
+      .addOperation(op)
+      .setTimeout(30)
+      .build()
+      .toXDR();
+  }
+
+  function buildScopedServer(submitter: TransactionSubmitter) {
+    const wallets = createMemoryWalletRepository();
+    app = buildServer({ submitter, wallets, networkPassphrase: PASSPHRASE });
+    return { server: app, wallets };
+  }
+
+  it("submits a tx whose only auth subject is a known wallet", async () => {
+    const submitter = workingSubmitter();
+    const { server, wallets } = buildScopedServer(submitter);
+    await wallets.insert({
+      keyId: "k",
+      contractId: KNOWN_WALLET,
+      network: "testnet",
+      createdAt: new Date().toISOString(),
+    });
+    const res = await server.inject({
+      method: "POST",
+      url: "/wallet/submit",
+      payload: { signedXdr: buildInvokeTx(KNOWN_WALLET), network: "testnet" },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("rejects (403) a tx authorizing a contract the server does not know — before the submitter runs", async () => {
+    const submitter = workingSubmitter();
+    const { server } = buildScopedServer(submitter);
+    const res = await server.inject({
+      method: "POST",
+      url: "/wallet/submit",
+      payload: { signedXdr: buildInvokeTx(OTHER_CONTRACT), network: "testnet" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("unknown_wallet_subject");
+    // The submitter (which would pick sponsor OR relayer) is never reached — so
+    // the tx cannot be smuggled through the relayer branch either.
+    expect(submitter.submit).not.toHaveBeenCalled();
+  });
+
+  it("rejects (403) a tx with no address-credential subject (nothing to attribute)", async () => {
+    const submitter = workingSubmitter();
+    const { server } = buildScopedServer(submitter);
+    const res = await server.inject({
+      method: "POST",
+      url: "/wallet/submit",
+      payload: { signedXdr: "not-a-valid-xdr", network: "testnet" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("no_wallet_subject");
+    expect(submitter.submit).not.toHaveBeenCalled();
   });
 });
 

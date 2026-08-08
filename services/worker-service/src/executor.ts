@@ -3,6 +3,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashArtifact } from "./artifact";
+import {
+  assertPublicHttpsRepoUrl,
+  gitConnectionPinArgs,
+  RepoUrlError,
+  type ResolvedPin,
+} from "./repo-url-guard";
 
 // BuildExecutor (technical-doc.md §8.4): the seam that rebuilds a submitted
 // contract deterministically, in isolation, and returns the built wasm bytes.
@@ -50,7 +56,8 @@ export class BuildExecutorError extends Error {
       | "clone_failed"
       | "build_failed"
       | "artifact_missing"
-      | "unsupported_source",
+      | "unsupported_source"
+      | "repo_url_rejected",
     readonly log = "",
   ) {
     super(message);
@@ -128,7 +135,12 @@ export interface DockerBuildExecutorConfig {
     args: string[],
     cwd: string,
     timeoutMs?: number,
+    env?: Record<string, string>,
   ) => Promise<{ code: number; out: string; timedOut?: boolean }>;
+  /** repoUrl SSRF guard (FIX 6); defaults to the real https+DNS check. Injected
+   * so tests don't hit the network. Throws RepoUrlError to reject, else returns
+   * the validated pin (undefined for an IP-literal host). */
+  assertRepoUrl?: (repoUrl: string) => Promise<ResolvedPin | undefined>;
 }
 
 /**
@@ -157,10 +169,47 @@ export function dockerBuildExecutor(config: DockerBuildExecutorConfig): BuildExe
           "unsupported_source",
         );
       }
+      // SSRF guard (security-audit.md H2/FIX 6): the clone runs on the HOST,
+      // outside the build sandbox. Require public https and re-resolve DNS right
+      // before cloning, rejecting private/loopback/link-local answers. The guard
+      // RETURNS the validated address so we can pin git's connection to it — git
+      // otherwise resolves the hostname again independently (the TOCTOU window).
+      const assertRepoUrl = config.assertRepoUrl ?? assertPublicHttpsRepoUrl;
+      let pin: ResolvedPin | undefined;
+      try {
+        pin = await assertRepoUrl(input.repoUrl);
+      } catch (err) {
+        if (err instanceof RepoUrlError) {
+          throw new BuildExecutorError(err.message, "repo_url_rejected");
+        }
+        throw err;
+      }
+
       const workdir = await mkdtemp(join(tmpdir(), "vela-verify-"));
       const log: string[] = [];
       try {
-        const clone = await run("git", ["clone", "--no-checkout", input.repoUrl, "repo"], workdir);
+        // Pin git's connection to the guard-validated IP (http.curloptResolve)
+        // AND forbid redirects (http.followRedirects=false) so git cannot be
+        // sent to a different, unpinned host it would resolve freely. Only
+        // https, and pass repoUrl after `--`.
+        const clone = await run(
+          "git",
+          [
+            "-c",
+            "protocol.allow=never",
+            "-c",
+            "protocol.https.allow=always",
+            ...gitConnectionPinArgs(pin),
+            "clone",
+            "--no-checkout",
+            "--",
+            input.repoUrl,
+            "repo",
+          ],
+          workdir,
+          undefined,
+          { GIT_TERMINAL_PROMPT: "0" },
+        );
         log.push(clone.out);
         if (clone.code !== 0) {
           throw new BuildExecutorError("git clone failed", "clone_failed", log.join("\n"));
@@ -289,9 +338,15 @@ async function findReleaseWasm(
   return join(repoDir, paths[0]!);
 }
 
-function defaultRun(cmd: string, args: string[], cwd: string, timeoutMs?: number) {
+function defaultRun(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  timeoutMs?: number,
+  env?: Record<string, string>,
+) {
   return new Promise<{ code: number; out: string; timedOut?: boolean }>((resolve) => {
-    const child = spawn(cmd, args, { cwd });
+    const child = spawn(cmd, args, { cwd, env: env ? { ...process.env, ...env } : process.env });
     let out = "";
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;

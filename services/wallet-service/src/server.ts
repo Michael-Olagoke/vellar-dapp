@@ -1,6 +1,12 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
-import { registerHealth, registerMetrics, domainMetrics, recordOutcome } from "@vellar/service-kit";
+import {
+  registerHealth,
+  registerMetrics,
+  domainMetrics,
+  recordOutcome,
+  type SpendBudget,
+} from "@vellar/service-kit";
 import {
   createMemoryAuditLog,
   createMemorySessionRepository,
@@ -12,6 +18,8 @@ import {
   type WalletRepository,
 } from "./repository";
 import { SubmissionError, type TransactionSubmitter } from "./relayer";
+import { assertScopedToKnownWallets, ScopeError } from "./scope";
+import { assertDerivedContractId, DerivationMismatchError } from "./derivation";
 
 // Wallet API (idea.md §11). No POST /wallet/sign: signing is client-side via
 // passkeys by design (technical-doc.md §8 — no silent signing, no server key
@@ -47,6 +55,18 @@ export interface WalletServiceDeps {
   sessions?: SessionRepository;
   audit?: AuditLog;
   now?: () => Date;
+  /** Passphrase used to parse submitted XDR for funding-path scoping. Keyed off
+   * server config, NEVER the request body's network field (security-audit V5).
+   * When unset, submission scoping is disabled (dev/no-relayer). */
+  networkPassphrase?: string;
+  /** Readiness probe for DB-aware /health (FIX 7). Returns false when the
+   * persistence layer is degraded so the orchestrator stops routing. */
+  isReady?: () => boolean | Promise<boolean>;
+  /** Rolling-window spend budget for the "create" funding line (FIX 3). When
+   * set, /wallet/create consumes it before relayer-funding a deploy; a refusal
+   * returns 503. Unset = budgeting disabled (dev / no relayer). The sponsor
+   * line is metered inside the submitter, where the fee is known. */
+  budget?: SpendBudget;
 }
 
 export function buildServer(deps: WalletServiceDeps): FastifyInstance {
@@ -57,7 +77,7 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
   const { submitter } = deps;
 
   const app = Fastify({ logger: true });
-  registerHealth(app, "wallet-service");
+  registerHealth(app, "wallet-service", { isReady: deps.isReady });
   registerMetrics(app, "wallet-service");
 
   async function openSession(contractId: string, network: "testnet" | "mainnet") {
@@ -80,8 +100,52 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
     }
     const { keyId, contractId, network, signedTx } = parsed.data;
 
+    // Derivation gate (security-audit.md V1): the smart-account address is a
+    // secret-free pure function of the keyId, so a caller must not be able to
+    // map their keyId to a contractId that isn't derive(keyId). This closes
+    // /wallet/create as a third funding path and enforces the invariant the
+    // keyId "client-authoritative" property rests on. Passphrase from server
+    // config, never the request body (V5).
+    if (deps.networkPassphrase) {
+      try {
+        assertDerivedContractId(keyId, contractId, {
+          networkPassphrase: deps.networkPassphrase,
+        });
+      } catch (err) {
+        if (err instanceof DerivationMismatchError) {
+          request.log.warn({ code: err.code }, "rejected create with mismatched contractId");
+          recordOutcome(domainMetrics.walletCreated, "wallet-service", "failure", network);
+          return reply.code(403).send({ error: err.code, message: err.message });
+        }
+        throw err;
+      }
+    }
+
     if (await wallets.findByKeyId(keyId, network)) {
       return reply.code(409).send({ error: "wallet_exists" });
+    }
+
+    // Meter wallet creation on its own budget line (FIX 3): creation is
+    // relayer-funded and unauthenticated, so cap it separately from submit so
+    // create-spam can't drain the budget legitimate submits need. Count-only
+    // (relayer quota isn't server-held XLM). Fails CLOSED — a refusal or an
+    // accounting error blocks the create rather than funding it unmetered.
+    if (deps.budget) {
+      let allowed: boolean;
+      try {
+        const r = await deps.budget.tryConsume({ line: "create", network, stroops: 0n });
+        allowed = r.ok;
+      } catch (err) {
+        request.log.error(err, "create budget accounting failed; refusing");
+        allowed = false;
+      }
+      if (!allowed) {
+        recordOutcome(domainMetrics.walletCreated, "wallet-service", "failure", network);
+        return reply.code(503).send({
+          error: "create_budget_exceeded",
+          message: "Wallet-creation budget reached; try again later.",
+        });
+      }
     }
 
     // Submit before persisting: a stored mapping to an undeployed contract
@@ -131,6 +195,33 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
       return reply.code(400).send({ error: "invalid_body", details: parsed.error.issues });
     }
     const { signedXdr, network } = parsed.data;
+
+    // Scope BOTH funding paths (sponsor + relayer) at the route, before the
+    // submitter picks a branch (security-audit.md C1/H1/V2): only sponsor/relay
+    // a tx whose address-credential auth subjects are all wallets we created.
+    // The passphrase comes from server config, never the request body (V5).
+    if (deps.networkPassphrase) {
+      try {
+        await assertScopedToKnownWallets(signedXdr, deps.networkPassphrase, (contractId) =>
+          wallets.existsByContractId(contractId, network),
+        );
+      } catch (err) {
+        if (err instanceof ScopeError) {
+          request.log.warn({ code: err.code }, "rejected unscoped submission");
+          recordOutcome(domainMetrics.txSigned, "wallet-service", "failure", network);
+          return reply.code(403).send({ error: err.code, message: err.message });
+        }
+        // A repository error here means we cannot verify the tx is scoped to a
+        // known wallet (e.g. Postgres dropped mid-run). Fail CLOSED — refuse to
+        // sponsor/relay rather than degrade to unmetered submission (FIX 7).
+        request.log.error(err, "scoping check failed; refusing submission");
+        recordOutcome(domainMetrics.txSigned, "wallet-service", "failure", network);
+        return reply.code(503).send({
+          error: "persistence_unavailable",
+          message: "Cannot verify wallet scope right now; try again shortly.",
+        });
+      }
+    }
 
     try {
       const { hash } = await submitter.submit(signedXdr);
