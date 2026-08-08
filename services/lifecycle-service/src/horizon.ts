@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 // Horizon account reader seam (technical-doc.md §6.3 Lifecycle Service:
 // account inspection). Classic (G...) accounts only — cleanup/merge is a
 // classic-account concept; smart wallets are contracts and cannot be merged.
@@ -36,49 +38,126 @@ export interface AccountReader {
   getAccount(accountId: string): Promise<HorizonAccount | undefined>;
 }
 
-export function createHorizonAccountReader(horizonUrl: string): AccountReader {
+/** The narrow slice of `fetch` this reader uses: a string URL plus an abort
+ * signal. Narrower than the DOM `fetch` type so test doubles stay simple. */
+export type FetchLike = (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
+
+export interface HorizonReaderOptions {
+  /** Injectable fetch (tests). Defaults to global fetch. */
+  fetchImpl?: FetchLike;
+  /** Per-request timeout; a hung Horizon must not stall the service. */
+  timeoutMs?: number;
+  /** Safety cap on offer pages followed, so a misbehaving `next` can't loop
+   * forever (200 offers/page ⇒ 50 pages = 10k offers, far past any real account). */
+  maxOfferPages?: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_OFFER_PAGES = 50;
+const OFFERS_PAGE_LIMIT = 200;
+
+// Runtime shapes: Horizon is an external service, so its responses are
+// VALIDATED, never `as`-cast. A malformed body fails with a clear error here
+// rather than a cryptic `.map of undefined` deep in the builder.
+const assetRefSchema = z.object({
+  asset_type: z.string(),
+  asset_code: z.string().optional(),
+  asset_issuer: z.string().optional(),
+});
+
+const accountSchema = z.object({
+  sequence: z.string(),
+  balances: z.array(
+    z.object({
+      asset_type: z.string(),
+      asset_code: z.string().optional(),
+      asset_issuer: z.string().optional(),
+      balance: z.string(),
+    }),
+  ),
+  data: z.record(z.string(), z.string()).default({}),
+});
+
+const offerRecordSchema = z.object({
+  id: z.union([z.string(), z.number()]).transform(String),
+  selling: assetRefSchema,
+  buying: assetRefSchema,
+  price: z.string(),
+});
+
+const offersPageSchema = z.object({
+  _links: z.object({ next: z.object({ href: z.string() }).optional() }).optional(),
+  _embedded: z.object({ records: z.array(offerRecordSchema) }),
+});
+
+export function createHorizonAccountReader(
+  horizonUrl: string,
+  options: HorizonReaderOptions = {},
+): AccountReader {
   const base = horizonUrl.replace(/\/+$/, "");
+  const doFetch = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxOfferPages = options.maxOfferPages ?? DEFAULT_MAX_OFFER_PAGES;
+
+  /** Fetch JSON with a timeout; caller validates the shape. */
+  async function fetchJson(url: string, label: string): Promise<{ status: number; body: unknown }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await doFetch(url, { signal: controller.signal });
+      if (res.status === 404) return { status: 404, body: undefined };
+      if (!res.ok) throw new Error(`Horizon ${label} failed (${res.status})`);
+      return { status: res.status, body: await res.json() };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function fetchAllOffers(accountId: string): Promise<HorizonOffer[]> {
+    let url = `${base}/accounts/${encodeURIComponent(accountId)}/offers?limit=${OFFERS_PAGE_LIMIT}`;
+    const offers: HorizonOffer[] = [];
+    for (let page = 0; page < maxOfferPages; page++) {
+      const { body } = await fetchJson(url, "offers fetch");
+      const parsed = offersPageSchema.safeParse(body);
+      if (!parsed.success)
+        throw new Error(`Horizon offers response was malformed: ${parsed.error.message}`);
+      const records = parsed.data._embedded.records;
+      // An empty page ends pagination even if a `next` link is still advertised
+      // (Horizon's next always points one past the last record).
+      if (records.length === 0) break;
+      for (const o of records) {
+        offers.push({
+          id: o.id,
+          sellingAssetType: o.selling.asset_type,
+          sellingAssetCode: o.selling.asset_code,
+          sellingAssetIssuer: o.selling.asset_issuer,
+          buyingAssetType: o.buying.asset_type,
+          buyingAssetCode: o.buying.asset_code,
+          buyingAssetIssuer: o.buying.asset_issuer,
+          price: o.price,
+        });
+      }
+      const next = parsed.data._links?.next?.href;
+      if (!next) break; // no further pages
+      url = next;
+    }
+    return offers;
+  }
 
   return {
     async getAccount(accountId) {
-      const accountRes = await fetch(`${base}/accounts/${encodeURIComponent(accountId)}`);
-      if (accountRes.status === 404) return undefined;
-      if (!accountRes.ok) throw new Error(`Horizon account fetch failed (${accountRes.status})`);
-      const account = (await accountRes.json()) as {
-        sequence: string;
-        balances: Array<{
-          asset_type: string;
-          asset_code?: string;
-          asset_issuer?: string;
-          balance: string;
-        }>;
-        data: Record<string, string>;
-      };
-
-      const offersRes = await fetch(
-        `${base}/accounts/${encodeURIComponent(accountId)}/offers?limit=200`,
+      const { status, body } = await fetchJson(
+        `${base}/accounts/${encodeURIComponent(accountId)}`,
+        "account fetch",
       );
-      if (!offersRes.ok) throw new Error(`Horizon offers fetch failed (${offersRes.status})`);
-      const offersBody = (await offersRes.json()) as {
-        _embedded: {
-          records: Array<{
-            id: string;
-            selling: { asset_type: string; asset_code?: string; asset_issuer?: string };
-            buying: { asset_type: string; asset_code?: string; asset_issuer?: string };
-            price: string;
-          }>;
-        };
-      };
-      const offers = offersBody._embedded.records.map((o) => ({
-        id: o.id,
-        sellingAssetType: o.selling.asset_type,
-        sellingAssetCode: o.selling.asset_code,
-        sellingAssetIssuer: o.selling.asset_issuer,
-        buyingAssetType: o.buying.asset_type,
-        buyingAssetCode: o.buying.asset_code,
-        buyingAssetIssuer: o.buying.asset_issuer,
-        price: o.price,
-      }));
+      if (status === 404) return undefined;
+
+      const parsed = accountSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new Error(`Horizon account response was malformed: ${parsed.error.message}`);
+      }
+      const account = parsed.data;
+      const offers = await fetchAllOffers(accountId);
 
       return {
         accountId,

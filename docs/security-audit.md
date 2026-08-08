@@ -417,6 +417,36 @@ read oracle. Same build-box gating as H2.
     builder work (right context — the builder + its promise reviewed together). The gitignored
     `landing-page/VELA Landing.html` has the same string but does not ship; leave it.
 
+  > **Status (FIX 12/L6): CLOSED.** All four parts fixed, with the L6b copy in the same pass so the
+  > builder and its user-facing promise stay in agreement.
+  >
+  > - **Op-split.** `buildCleanupSteps` (`lifecycle-service/src/builder.ts`) now collects every
+  >   cleanup operation and splits by `OPS_PER_TX = 100` — Stellar's hard protocol limit (a 101-op
+  >   tx is rejected with `txTOO_MANY_OPS`; the SDK does not guard it client-side, so the old
+  >   single-tx build silently produced an invalid tx for >100-op accounts, despite the "can re-run
+  >   the wizard" comment). Split transactions share one `Account` source, so they carry
+  >   **consecutive sequence numbers** and the user signs/submits them in order; each step is
+  >   titled `(n/total)`.
+  > - **Planner agreement.** `buildCleanupPlan`'s `estimatedTransactions` now counts the REAL op
+  >   count (a "N open offers" blocker is one row but N cancel ops; a non-zero balance is two ops),
+  >   so the estimate no longer under-reports the number of transactions the builder emits.
+  > - **Horizon reads validated + paginated + timed out.** `createHorizonAccountReader`
+  >   (`horizon.ts`) replaces the `as`-casts with **zod** runtime validation (a malformed body
+  >   throws a clear "Horizon … was malformed" error, not a cryptic `.map of undefined` in the
+  >   builder), follows `_links.next` to collect **all** offer pages (the old `?limit=200` read
+  >   only the first page, so a >200-offer account would clean up incompletely and fail the merge),
+  >   guards against a self-referential `next` (stops on an empty page, capped at `maxOfferPages`),
+  >   and wraps every request in an `AbortController` **timeout** so a hung Horizon can't stall.
+  > - **L6b copy.** The landing card is retitled **"Guided account cleanup"** and its body now
+  >   states plainly that closing an account moves its funds and can't be undone — the honest
+  >   guarantee (guided, reviewable, you sign every step), not "safe". The gitignored landing HTML
+  >   is left as-is (does not ship).
+  >
+  > Tests: `builder.test.ts` (no step exceeds 100 ops; 250 ops → 3 txs summing to 250; consecutive
+  > sequences; non-zero balance = 2 ops); `server.test.ts` (150 offers → 3 transactions estimate;
+  > 100 non-zero balances → 3); `horizon.test.ts` (404 → undefined; non-ok → throws; malformed body
+  > → clear error; offers collected across pages; empty-page guard; timeout aborts).
+
 - **L7 — 14 high dependency advisories (0 critical) `[dependency]`** — `pnpm-workspace.yaml:16`.
   Most reachable ones config-mitigated (no http2 → find-my-way DoS inert). **Fix:** add
   `pnpm audit` to CI; bump `next` to `>=16.2.11`; update the wxt dev chain.

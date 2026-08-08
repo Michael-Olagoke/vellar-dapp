@@ -50,9 +50,18 @@ export function buildCleanupPlan(account: HorizonAccount, destination: string): 
     });
   }
 
-  // Cleanup ops (one per blocker except pure balance-transfer notes pair with
-  // their trustline removal) + the final merge transaction.
-  const cleanupOps = blockers.length;
+  // The estimate must track the ACTUAL operation count the builder emits, not
+  // blocker count: a "N open offers" blocker is one row but N cancel ops, and a
+  // non-zero balance is two ops (transfer + trustline removal). Undercounting
+  // here would promise fewer transactions than the split builder produces.
+  let cleanupOps = 0;
+  for (const balance of account.balances) {
+    if (balance.assetType === "native") continue;
+    if (Number(balance.balance) > 0) cleanupOps++; // payment
+    cleanupOps++; // trustline removal
+  }
+  cleanupOps += account.openOffers; // one manageSellOffer per open offer
+  cleanupOps += account.dataKeys.length; // one manageData per entry
   const estimatedTransactions = Math.max(1, Math.ceil(cleanupOps / OPS_PER_TX) + 1);
 
   return {
