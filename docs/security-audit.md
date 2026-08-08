@@ -288,6 +288,31 @@ read oracle. Same build-box gating as H2.
   `apps/web/lib/policy.ts:82-93`). Latent; harden before any consumer trusts it. **Fix:** verify
   the txHash on-chain before stamping `deployed`.
 
+  > **Status (FIX 12/L1): CLOSED by verification, NOT by removal.** The field is kept (it is the
+  > canonical "this policy is now attached" record `deployPolicy` returns), but `/policies/deploy`
+  > now **decodes the client-supplied tx and confirms it actually attached THIS policy to THIS
+  > wallet** before stamping `deployed` (`services/policy-service/src/verify-attach.ts`):
+  >
+  > - The tx must exist and have SUCCEEDED on the **server-config network** (the lookup is bound to
+  >   config's RPC, never the request body — V5), invoked `add_signer`/`update_signer` on the
+  >   record's **wallet**, and carry the record's **policy contract id** in the signer args (found
+  >   by recursively scanning the ScVal args, so the address inside the nested `Signer::Policy`
+  >   enum is matched). The wallet is now persisted on `record.instance` at `/deploy-instance` so
+  >   there is something to verify against.
+  > - **Two failure modes are distinguished** so an operator can tell "can't reach chain" from
+  >   "you lied": `AttachUnconfirmedError` → **503** (RPC unreachable or tx NOT_FOUND — fail closed,
+  >   retryable, not stamped); `AttachMismatchError` → **422** (tx FAILED, or attached a different
+  >   policy/wallet, or is an unrelated call — a definite lie).
+  >
+  > **Why the "exists + succeeded" check was REJECTED:** that only defeats `txHash: "00…"`. Any
+  > successful hash on the network passes, and the chain is a public list of those (our own docs
+  > publish testnet hashes) — the attacker's cost goes from typing zeros to copy-pasting. Worse, it
+  > would hand a future consumer a field that _looks_ verified and isn't, so the next person won't
+  > re-derive the weakness. Same standard as **FIX 2**: verify that the tx equals the expected
+  > attach, not that it is a plausible tx. Tests: an unrelated same-network tx → 422; a tx attaching
+  > a different policy → 422; this policy to a different wallet → 422; the legit flow → 200; RPC
+  > unreachable → 503 (not stamped).
+
 - **L2 — Downstream services bind `0.0.0.0:4001-4004` with no middleware `[my code]`** —
   `service-kit/src/index.ts:88`. _Downgraded to Low:_ committed configs publish only `$PORT`,
   so not internet-reachable via the public URL today; residual defense-in-depth + shared
