@@ -581,3 +581,183 @@ are testnet-only.
 **Dropped from blocking:** M4 (availability-only per V3; gate `verified_only` out of the mainnet
 builder + add detach UI when that path is enabled).
 **Still gated on dashboard (V6):** final severity of L2 (port exposure) and M9 (autoDeploy).
+
+---
+
+## Re-audit of the patched tree (RA) — findings introduced or missed by the remediation
+
+Method: after #228 + #230 merged, the patched tree was re-audited **read-only**, treating all
+remediation code as untrusted new surface. Nine parallel hunts (SSRF guard, derivation gate,
+route-scoping, spend budget, escape hatches, FIX-12 paths, policy-attach invariant, closure-by-test,
+standard sweep); every candidate then adversarially re-verified against the actually-installed code
+(the verifier defaulted to _refuting_). Nine findings survived verification. The two Highs sit on the
+**funding path** — the exact controls the mainnet gate depends on.
+
+### RA-1 — Route scope gate matches only the **V1** credential string; passkey-kit 0.14 signs **V2** 🔴 High `[my code]`
+
+`services/wallet-service/src/scope.ts:43`; same defect in `apps/extension/lib/tx-signer.ts:101`.
+
+`extractAddressAuthSubjects` filters auth entries with `entry.credentials().switch().name !==
+"sorobanCredentialsAddress"` — an exact match on **V1** only. But the production signer
+`passkey-kit@0.14.0` **never emits V1 for a signed wallet op**: `kit/tx-ops.js:45` calls
+`toAddressBoundCredentials`, which `kit/auth-payload.js:65-67` upgrades every entry **in place** to
+`sorobanCredentialsAddressV2`, and `tx-ops.js:46-48` throws unless the payload is V2/with-delegates
+("there is deliberately NO V1 signing path"). `@stellar/stellar-sdk@16.0.1` `curr_generated.js:1726-1731`
+confirms the enum has V1(1)/V2(2)/with-delegates(3). Two failures:
+
+- **(b) fail-closed BREAK (live on testnet today):** a normal single-op V2-signed wallet tx yields
+  `subjects === []` → `assertScopedToKnownWallets` throws `ScopeError('no_wallet_subject')` →
+  **HTTP 403 on every legitimate `/wallet/submit`** in the production posture (the gate is live
+  whenever `deps.networkPassphrase` is set — `server.ts:203-207`, wired from server config at
+  `index.ts:100-111`). Every post-deploy wallet operation is rejected the moment the gate is enabled.
+- **(a) scope BYPASS:** a mixed tx with one V1 entry bound to a known wallet + one V2 entry bound to
+  an attacker contract yields `subjects === [known]` (V2 skipped at line 43), passes the gate, and
+  `needsSponsorRebuild` routes it to the funded sponsor rebuild `{func, auth:[A,B]}` — the V2 leg
+  rides past the C1/H1/V2 scope control.
+
+The suite is green only because `scope.test.ts` builds solely V1 / source-account fixtures — the V2
+path is never exercised (see the fixture-defect note in RA notes). The identical V1-only filter in
+`tx-signer.ts:101` means the extension signer would skip the real V2 entries and sign nothing.
+
+> **Status (RA-1): OPEN — hard mainnet blocker AND live testnet break.** Fix must match
+> `sorobanCredentialsAddressV2` and `sorobanCredentialsAddressWithDelegates`, extract the address
+> from each variant, in **both** `scope.ts` and `tx-signer.ts`; add a mixed-V1+V2 bypass test; and
+> derive fixtures from passkey-kit's actual signing path so a future credential-shape change breaks
+> the test rather than hiding behind it.
+
+### RA-2 — Spend-budget conditional INSERT is not atomic under READ COMMITTED 🔴 High `[my code]`
+
+`packages/service-kit/src/pg-budget.ts:41`.
+
+`tryConsume` runs check-and-record as a single `WITH agg AS (SELECT SUM(count)/SUM(stroops) FROM
+spend_ledger WHERE line/network/at>windowStart) INSERT … SELECT … WHERE agg.sum + N <= max`
+statement. The aggregate CTE takes **no row locks** (no `FOR UPDATE`), the INSERT writes a fresh
+`randomUUID` row against only a **non-unique** `(line,network,at)` index, and `db/client.ts:19` is a
+bare `pg.Pool` with **no isolation override** (default READ COMMITTED; no SERIALIZABLE / `FOR UPDATE`
+/ advisory lock anywhere in the repo). N concurrent requests each snapshot the same committed sum,
+all pass the `WHERE`, all commit → the ceiling degrades from a hard cap to **ceiling + pool
+concurrency**.
+
+`budget.ts:2-4` documents this cap as the **sole** binding funding-path control (the gateway per-IP
+limit does not bind — no `trustProxy`). So the overshoot is a direct drain of real sponsor XLM past
+the FIX-3 ceiling: fire 8 concurrent `/wallet/submit` (or `/wallet/create` / `/policies/deploy` —
+all share `createPgSpendBudget`) against a maxCount=1 boundary → up to 8 sponsored txs land. The
+concurrency test that would catch it (`pg-budget.test.ts:112-127`) is `describe.skipIf(!TEST_DATABASE_URL)`
+and does not run in ordinary CI, so the atomicity guarantee is **unverified** and would fail against
+real Postgres.
+
+> **Status (RA-2): OPEN — hard mainnet blocker.** Serialize the check+insert (recommend a unique
+> per-`(line,network,window)` counter row updated with `… ON CONFLICT DO UPDATE … WHERE new_total <=
+> max`, or `pg_advisory_xact_lock(line,network)` wrapping check+insert in one tx, or SERIALIZABLE +
+> retry). Then **un-skip** the concurrency test and stand up Postgres in CI so the guarantee is
+> actually exercised — a guarantee that only holds when a local env var is set is not a guarantee.
+
+### RA-3 — M1 (session enumeration + revocation) is still OPEN; the doc's own status is stale 🟡 Medium `[my code]`
+
+`services/wallet-service/src/server.ts:254-274`.
+
+`GET /wallet/sessions` (`:254-261`) and `DELETE /wallet/session/:id` (`:263-274`) read only
+query/params and enforce **no** ownership or bearer credential. An unauthenticated attacker who
+learns a victim's public C-address (it is on-chain) can enumerate every active session id + metadata
+(`GET …?contractId=<victim>`), then `DELETE` each → log the victim out of all devices. M1 has **no**
+"Status: CLOSED" block and still sits on the pre-exposure checklist (Remediation order item 6), yet
+its Fix ("authorize read/revoke with the caller's own opaque session id as a bearer capability") was
+never implemented. Impact is bounded — sessions gate **no** on-chain authority (authorization is
+on-chain via `__check_auth`; web connected-state derives from SDK localStorage) — so this is device-
+management DoS + session-graph disclosure, **not** an authz bypass.
+
+> **Status (RA-3): OPEN.** "Open finding with doc text implying otherwise" is the worst of both.
+> Implement the bearer-capability ownership guard on both routes and add a 401/403 test for a
+> non-owning caller; keep the impact note accurate (no on-chain authority).
+
+### RA-4 — `ALLOW_INMEMORY` fail-closed boot guard is **inert** on the deploy targets 🟡 Medium `[my code]`
+
+`packages/service-kit/src/persistence.ts:29,41,56`.
+
+`isProduction` is a strict `nodeEnv === "production"` and gates both fail-closed branches. The
+deployed process (`@vellar/all-in-one`) starts via `tsx … src/index.ts` with **no `NODE_ENV`**, and
+**no committed config** (`render.yaml` envVars, `railway.json`, `.env.example`) sets it — confirmed
+by repo-wide grep; neither platform injects it by default. So at runtime `isProduction(undefined) ===
+false`: when `DATABASE_URL` is set but unreachable, the guard falls through to `allow-inmemory` and
+`/health` reports ok. This **silently undoes FIX 7 (M6) on the actual deploy target** — and
+`render.yaml:8` warns the free Postgres **expires at 30 days**, exactly the DB-gone failure mode
+where audit log, sessions, and the FIX-3 spend budgets would reset to volatile in-memory while
+health monitoring says healthy. Downgraded High→Medium only because both manifests are testnet-only.
+
+> **Status (RA-4): OPEN — fix in this pass.** Set `NODE_ENV=production` in the deploy config so the
+> FIX-7 guard is live, or key the guard off a signal actually present at runtime. This is worse than
+> a normal Medium because it re-opens a finding already marked closed.
+
+### RA-5 — Cleanup builder pays the full asset balance **before** cancelling offers (ignores selling liabilities) 🟡 Medium `[my code]`
+
+`services/lifecycle-service/src/builder.ts:59` (+ `horizon.ts` never parses `selling_liabilities`).
+
+`collectCleanupOps` emits every non-native payment at `amount = balance.balance` (the **full**
+trustline balance) and its trustline removal, and only **afterward** the offer cancels — so payments
+always precede cancels in the op list. For an account holding an asset it also has an open offer
+selling (100 USDC held, 40 USDC on offer), the payment of 100 hits the 40 locked as a selling
+liability → `op_underfunded` → whole tx `txFAILED`. Guided cleanup can never complete for a common
+real account state, and the wizard surfaces a raw `op_underfunded`. No fund loss (txs are unsigned)
+and the `/lifecycle/merge` preflight re-inspects live state (409 while blockers remain), so no
+irreversible merge on partial cleanup — a liveness/correctness bug, not a safety one. Untested.
+
+> **Status (RA-5): OPEN.** Cancel offers before payments (or subtract `selling_liabilities` from the
+> paid amount); parse `selling_liabilities` in `horizon.ts`; add a balance-plus-same-asset-offer test.
+
+### RA-6 — V3 detach invariant is pinned only at the pure helper; the attach/detach wiring is untested 🟡 Medium `[my code]`
+
+`apps/web/lib/connector-factory.ts:123`.
+
+V3's refutation of permanent fund lock holds **only** because the policy attaches as a standalone
+`SignerLimits(None)` signer, triggering the wallet's `is_sole_self_removal` exception on detach. That
+fund-lock-critical shape lives entirely in the pure helper `policyAttachArgs`; `policy-signer.test.ts`
+asserts only the helper in isolation, `policy.test.ts` drives detach through a `vi.fn` fake (never the
+real `kit.remove(SignerKey.Policy(...))`), and the L1 backend verifier deliberately does **not** check
+the `SignerLimits` shape. So a plausible future edit — making `verified_only` a co-signer inside
+another key's `SignerLimits` map, as the verified-recipient doc-comment contemplates — would ship
+**green** and re-introduce the V3 permanent-fund-lock (a reject-everything policy could then block its
+own removal). No live bypass today; a test-coverage gap on a fund-lock-critical invariant.
+
+> **Status (RA-6): OPEN.** Add an integration test that drives the real `connector-factory` attach
+> and asserts the emitted signer is standalone `SignerLimits(None)`, and a detach test through the
+> real `kit.remove` path — so the shape breaks a test if a refactor changes it.
+
+### RA-7 — `isBlockedAddress` misses hex-form IPv4-mapped + NAT64 IPv6 ℹ️ Info `[my code]`
+
+`services/worker-service/src/repo-url-guard.ts:64`.
+
+As a pure unit, `isBlockedAddress` returns `false` for `::ffff:7f00:1` (127.0.0.1), `::ffff:a9fe:a9fe`
+(169.254.169.254), and `64:ff9b::a9fe:a9fe` (NAT64) — the line-64 regex catches only the dotted
+`::ffff:d.d.d.d` form. **Downgraded to Info** (from a claimed Low): no reachable failure today —
+`new URL` keeps IPv6 literals bracketed, so `isIP` returns 0, the literal branch is skipped, and
+`dns.lookup` of the bracketed string throws ENOTFOUND (fail-closed); the only production resolver
+emits IPv4-mapped answers in the dotted form the regex does catch. Latent defense-in-depth: it
+defends only a hypothetical future refactor that strips brackets before the literal check.
+
+> **Status (RA-7): OPEN (latent).** Canonicalize IPv6 to bytes and range-check embedded IPv4-mapped
+> + NAT64 rather than string-prefix matching. Low urgency; no live path.
+
+### RA-8 — Audit hygiene: M3 / M4 / M5(deferral) / M8 / M9 are **not** code-fixed closures ℹ️ Info
+
+Reporting risk, not a runtime defect. A reviewer tallying "closed by passing test" must not count
+these: **M3** leak behavior is unchanged — the tests pin the _documented_ 2× tumbling-window property
+(`spending-limit/src/test.rs:276` passes ~2× across a boundary); **M4** is product-gated + the V3
+recovery path, no mainnet registry; **M5** is a boot-refusal guard only (`attestor-guard.ts`), **not**
+a threshold attestor — a single `ATTESTOR_SECRET_KEY` compromise still forges provenance the moment
+`ALLOW_SINGLE_KEY_ATTESTOR` is set; **M8** is a lockfile/override pin, no test; **M9** committed
+`autoDeploy:false` + the `pnpm audit` gate, but branch-protection / Railway toggles remain manual
+dashboard settings. Classify each as closed-by-doc / deferred / config-only, never closed-by-test.
+
+> **Status (RA-8): informational.** No code change; ensures the closure ledger stays honest.
+
+### Re-audit bottom line
+
+- **Closed by passing test (verified by reading assertions):** C1/H1/V2, V1 derivation gate, H2, H3,
+  M2, M6-readiness, M7, L1, L3, L4, L5, L6/L6b.
+- **Closed by doc/config/deferral (NOT code-fixed):** M3, M4, M5, M8, M9 (see RA-8).
+- **Open / partial:** RA-1, RA-2 (funding-path Highs), RA-3 (M1), RA-4, RA-5, RA-6, RA-7.
+- **Mainnet: NO-GO** until RA-1, RA-2, M1 are fixed+tested, plus the deferred prerequisites (M5
+  multisig attestor, V3 detach UI) and the two V6 dashboard facts (L2 port firewalling, M9
+  autoDeploy/branch-protection) are confirmed. Every verdict remains conditional on the **unaudited**
+  `vellar-sdk` / `passkey-kit` (passkey ceremony, session store, address derivation this repo
+  enforces against — and the V1→V2 credential upgrade that drives RA-1 lives in that unread kit).
