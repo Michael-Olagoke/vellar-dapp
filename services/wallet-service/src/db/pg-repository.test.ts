@@ -10,9 +10,16 @@ import {
 } from "./pg-repository";
 import { activityLogs, wallets, walletSessions } from "./schema";
 
-// Integration tests against a real Postgres. Skipped unless TEST_DATABASE_URL
-// is set (CI provides a service container; locally: infra/docker compose).
+// Integration tests against a real Postgres. Skipped LOCALLY unless
+// TEST_DATABASE_URL is set (CI provides a service container; locally:
+// infra/docker compose). CI sets CI_REQUIRE_DB=1 so these FAIL rather than
+// silently skip if the DB service ever goes missing (RA-2).
 const DATABASE_URL = process.env.TEST_DATABASE_URL;
+if (!DATABASE_URL && process.env.CI_REQUIRE_DB === "1") {
+  throw new Error(
+    "CI_REQUIRE_DB=1 but TEST_DATABASE_URL is unset — DB integration tests would silently skip.",
+  );
+}
 
 describe.skipIf(!DATABASE_URL)("pg repositories", () => {
   let handle: DbHandle;

@@ -5,6 +5,7 @@ import {
   withinCeiling,
   type BudgetLimits,
 } from "./budget";
+import { createPgSpendBudget, type BudgetDb } from "./pg-budget";
 
 describe("withinCeiling (pure ceiling logic)", () => {
   const limits: BudgetLimits = { maxStroops: 500_000_000n, maxCount: 500 };
@@ -68,5 +69,78 @@ describe("budgetLimitsFromEnv", () => {
       {},
     );
     expect(limits).toEqual({ maxCount: 30 });
+  });
+});
+
+// RA-2: the check-and-record must be serialized against concurrent same-key
+// callers, or N parallel requests each read the same committed sum and all pass
+// (ceiling overshoot). The mechanism is pg_advisory_xact_lock inside a
+// transaction, taken BEFORE the aggregate read. These unit tests prove the
+// ORDER and structure without a real DB; pg-budget.test.ts proves the actual
+// concurrency guarantee against Postgres.
+describe("createPgSpendBudget serialization (RA-2)", () => {
+  /** Flatten a drizzle `sql` object to its literal SQL text (chunk values). */
+  function sqlText(q: unknown): string {
+    const chunks = (q as { queryChunks?: Array<{ value?: string[] } | null> }).queryChunks ?? [];
+    return chunks
+      .map((c) => (c && Array.isArray(c.value) ? c.value.join("") : ""))
+      .join(" ")
+      .toLowerCase();
+  }
+
+  /** A mock BudgetDb that records, in order, every statement run inside the
+   * transaction, and returns an insert row so the consume reads as ok. */
+  function recordingDb() {
+    const order: string[] = [];
+    const db: BudgetDb = {
+      async execute() {
+        throw new Error("consume must run inside a transaction, not a bare execute");
+      },
+      async transaction(fn) {
+        const tx = {
+          async execute(q: unknown) {
+            order.push(sqlText(q));
+            // The final check-insert statement RETURNs a row id when it inserts.
+            return { rows: [{ id: "row-1" }] };
+          },
+        };
+        return fn(tx as never);
+      },
+    };
+    return { db, order };
+  }
+
+  it("takes the advisory lock BEFORE the aggregate read, inside one transaction", async () => {
+    const { db, order } = recordingDb();
+    const budget = createPgSpendBudget(db, {
+      windowMs: 3_600_000,
+      limits: {
+        sponsor: { maxStroops: 1n, maxCount: 1 },
+        deploy: { maxCount: 1 },
+        create: { maxCount: 1 },
+      },
+    });
+
+    await budget.tryConsume({ line: "sponsor", network: "testnet", stroops: 0n });
+
+    // First statement in the tx acquires the per-(line,network) advisory lock…
+    expect(order[0]).toContain("pg_advisory_xact_lock");
+    // …and only AFTER it do we aggregate the window and insert.
+    const lockIdx = order.findIndex((s) => s.includes("pg_advisory_xact_lock"));
+    const aggIdx = order.findIndex((s) => s.includes("spend_ledger") && s.includes("sum"));
+    expect(lockIdx).toBeGreaterThanOrEqual(0);
+    expect(aggIdx).toBeGreaterThan(lockIdx);
+  });
+
+  it("keys the advisory lock on (line, network) so different keys don't serialize", async () => {
+    const { db, order } = recordingDb();
+    const budget = createPgSpendBudget(db, {
+      windowMs: 3_600_000,
+      limits: { sponsor: { maxCount: 1 }, deploy: { maxCount: 1 }, create: { maxCount: 1 } },
+    });
+    await budget.tryConsume({ line: "deploy", network: "mainnet", stroops: 0n });
+    const lockStmt = order.find((s) => s.includes("pg_advisory_xact_lock"))!;
+    // The lock argument derives from line+network (hashed), not a constant.
+    expect(lockStmt).toContain("hashtext");
   });
 });

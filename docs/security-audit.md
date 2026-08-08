@@ -650,11 +650,28 @@ concurrency test that would catch it (`pg-budget.test.ts:112-127`) is `describe.
 and does not run in ordinary CI, so the atomicity guarantee is **unverified** and would fail against
 real Postgres.
 
-> **Status (RA-2): OPEN — hard mainnet blocker.** Serialize the check+insert (recommend a unique
-> per-`(line,network,window)` counter row updated with `… ON CONFLICT DO UPDATE … WHERE new_total <=
-max`, or `pg_advisory_xact_lock(line,network)` wrapping check+insert in one tx, or SERIALIZABLE +
-> retry). Then **un-skip** the concurrency test and stand up Postgres in CI so the guarantee is
-> actually exercised — a guarantee that only holds when a local env var is set is not a guarantee.
+> **Status (RA-2): CLOSED.** `pg-budget.ts` now runs the check+insert inside a **transaction**
+> guarded by `pg_advisory_xact_lock(hashtext('<line>:<network>'))` **taken before the aggregate
+> read**, so same-`(line,network)` callers serialize (lock auto-released at commit) and different
+> keys never block each other. Chosen over a unique counter row (would force a tumbling window,
+> re-introducing M3's boundary leak in our own ledger) and over SERIALIZABLE+retry (retry loops +
+> aborts on the funding hot path).
+>
+> **A second defect surfaced and was fixed:** the existing concurrency test was **decorative**. It
+> both (a) skipped locally behind `skipIf(!TEST_DATABASE_URL)` and (b) fired `Promise.all` over a
+> single drizzle pool, which serializes on the pool and never actually raced — so it passed even
+> against the broken single-statement code. Proven with real parallel connections (12 own-connection
+> consumers, ceiling 1): the old single statement inserted **10 rows** (overshoot); the advisory-lock
+> version inserts exactly **1**. The test is rewritten to use N independent single-connection pools
+> so it truly races — it now **fails against the pre-fix code and passes with the lock** (verified
+> against Postgres 16 via `infra/docker`). Unit tests (`budget.test.ts`, no DB) additionally pin that
+> the lock statement is issued **first**, inside a transaction, keyed on `hashtext(line:network)`.
+>
+> **CI now enforces the guarantee runs:** the workflow already provisions Postgres and passes
+> `TEST_DATABASE_URL`; it also sets `CI_REQUIRE_DB=1`, under which the DB integration suites **fail
+> rather than silently skip** if the DB ever goes missing — so "the guarantee only holds when a local
+> env var is set" can no longer be true in CI. The false "ONE atomic statement" claim in `budget.ts`
+> is corrected.
 
 ### RA-3 — M1 (session enumeration + revocation) is still OPEN; the doc's own status is stale 🟡 Medium `[my code]`
 

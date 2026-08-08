@@ -54,6 +54,12 @@ jobs:
         run: pnpm test
         env:
           TEST_DATABASE_URL: postgres://vela:vela@localhost:5433/vela
+          # RA-2: the DB-backed integration tests (incl. the spend-budget
+          # concurrency guarantee) must ACTUALLY RUN in CI. With this set, the
+          # integration suites FAIL rather than silently skip if the Postgres
+          # service ever goes missing, so the atomicity guarantee cannot quietly
+          # stop being exercised.
+          CI_REQUIRE_DB: "1"
 
       - name: Build
         run: pnpm build
