@@ -39,12 +39,20 @@ export interface SessionRecord {
 }
 
 export interface WalletApiClient extends WalletBackend, PaymentSubmitBackend {
+  /** List the sessions for an account. `bearerSessionId` is the CALLER's own
+   * live session id (WalletSession.serverSessionId) — the M1 bearer capability
+   * (security-audit.md RA-3): the server requires it and scopes the list to the
+   * account that session is bound to. */
   listSessions(input: {
     contractId: string;
     network: string;
+    bearerSessionId: string;
   }): Promise<{ sessions: SessionRecord[] }>;
-  /** Revoking an already-gone session is a no-op, not an error. */
-  revokeSession(id: string): Promise<void>;
+  /** Revoke `targetSessionId` (which may be a different device on the same
+   * account), authorized by the caller's own live session `bearerSessionId`.
+   * A revoke that does not apply (unknown/cross-account target) is a real error,
+   * NOT a silent success — see the 404 handling below. */
+  revokeSession(input: { bearerSessionId: string; targetSessionId: string }): Promise<void>;
 }
 
 export function createHttpWalletBackend(
@@ -53,10 +61,12 @@ export function createHttpWalletBackend(
 ): WalletApiClient {
   const base = apiUrl.replace(/\/+$/, "");
 
-  async function post(path: string, body: unknown): Promise<Response> {
+  async function post(path: string, body: unknown, bearer?: string): Promise<Response> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (bearer) headers.authorization = `Bearer ${bearer}`;
     return fetchImpl(`${base}${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
   }
@@ -87,19 +97,26 @@ export function createHttpWalletBackend(
       return (await res.json()) as { hash: string };
     },
 
-    // Session/device management (technical-doc.md §5.1).
-    async listSessions({ contractId, network }: { contractId: string; network: string }) {
+    // Session/device management (technical-doc.md §5.1). Both routes carry the
+    // M1 bearer capability (Authorization header, RA-3) — the session id is a
+    // credential, so it travels in the header/body, never the URL.
+    async listSessions({ contractId, network, bearerSessionId }) {
       const query = new URLSearchParams({ contractId, network });
-      const res = await fetchImpl(`${base}/wallet/sessions?${query}`);
+      const res = await fetchImpl(`${base}/wallet/sessions?${query}`, {
+        headers: { authorization: `Bearer ${bearerSessionId}` },
+      });
       if (!res.ok) throw await toApiError(res);
       return (await res.json()) as { sessions: SessionRecord[] };
     },
 
-    async revokeSession(id: string) {
-      const res = await fetchImpl(`${base}/wallet/session/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok && res.status !== 404) throw await toApiError(res);
+    async revokeSession({ bearerSessionId, targetSessionId }) {
+      // POST /wallet/sessions/revoke: the target id is in the BODY (not the URL,
+      // which Fastify logs), authorized by the caller's own session bearer. A
+      // non-2xx is a REAL failure and MUST throw — the old client swallowed a
+      // 404 as success, which silently no-op'd every revoke when the route was
+      // renamed. Revocation is a security control; it must fail loudly.
+      const res = await post("/wallet/sessions/revoke", { targetSessionId }, bearerSessionId);
+      if (!res.ok) throw await toApiError(res);
     },
   };
 }

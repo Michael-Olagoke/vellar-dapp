@@ -143,7 +143,6 @@ function Explorer() {
 }
 
 function RecordCard({ record }: { record: PublicVerificationRecord }) {
-  const [showLog, setShowLog] = useState(false);
   return (
     <article
       className="neo-card"
@@ -191,27 +190,21 @@ function RecordCard({ record }: { record: PublicVerificationRecord }) {
           </>
         )}
       </dl>
-      {record.log && (
-        <div>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowLog((s) => !s)}>
-            {showLog ? "Hide build log" : "Show build log"}
-          </button>
-          {showLog && (
-            <pre
-              style={{
-                marginTop: 8,
-                padding: 12,
-                background: "var(--neo-bg, #111)",
-                borderRadius: 8,
-                fontSize: 12,
-                overflowX: "auto",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {record.log}
-            </pre>
-          )}
-        </div>
+      {/* H3/FIX 6 (#229): the raw build log is no longer exposed by the API — it
+          leaked host paths / internal IPs. The server now returns a sanitized
+          public `statusDetail` (e.g. "Build failed (clone_failed)."). */}
+      {record.statusDetail && (
+        <p
+          style={{
+            marginTop: 8,
+            padding: 12,
+            background: "var(--neo-bg, #111)",
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        >
+          {record.statusDetail}
+        </p>
       )}
     </article>
   );

@@ -28,6 +28,7 @@
     "vitest": "^3.2.0"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
   }
 }

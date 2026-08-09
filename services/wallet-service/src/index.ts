@@ -99,6 +99,9 @@ if (dbHandle) {
   budget = createUnavailableBudget();
 }
 deps.budget = budget;
+// Create budget line meters on the server-config network (V5/RA-3), same source
+// as the sponsor line — never the request body.
+deps.budgetNetwork = budgetNetwork;
 
 // Now build the submitter (sponsor path metered by the same budget).
 let submitter = config.relayer

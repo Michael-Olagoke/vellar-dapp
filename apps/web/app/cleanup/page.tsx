@@ -21,7 +21,16 @@ import {
 type Wizard =
   | { stage: "input" }
   | { stage: "plan"; plan: CleanupPlan }
-  | { stage: "cleanup"; step: CleanupStep; watching: boolean; timedOut: boolean }
+  // Cleanup may be SPLIT into multiple transactions (>100 ops); `steps` holds
+  // all of them and `index` is the one the user is signing now. The wizard walks
+  // every step in order before it advances to the merge.
+  | {
+      stage: "cleanup";
+      steps: CleanupStep[];
+      index: number;
+      watching: boolean;
+      timedOut: boolean;
+    }
   | { stage: "merge"; step: CleanupStep; watching: boolean; timedOut: boolean }
   | { stage: "done" };
 
@@ -66,9 +75,8 @@ export default function Cleanup() {
     run(async () => {
       const { steps } = await executeCleanup(accountId.trim(), destination.trim());
       if (steps.length === 0) return startMerge();
-      const step = steps[0]!;
-      setWizard({ stage: "cleanup", step, watching: true, timedOut: false });
-      void watch(step, "cleanup");
+      setWizard({ stage: "cleanup", steps, index: 0, watching: true, timedOut: false });
+      void watchCleanup(steps, 0);
     });
 
   const startMerge = () =>
@@ -78,15 +86,35 @@ export default function Cleanup() {
       void watch(step, "merge");
     });
 
-  async function watch(step: CleanupStep, stage: "cleanup" | "merge") {
+  // Walk each cleanup chunk in order: watch chunk `index`, and on confirmation
+  // advance to the next chunk (not straight to merge) until all are signed —
+  // only then build the merge. Dropping chunks 2..N left large accounts
+  // partially cleaned and dead-ended at a 409-on-merge.
+  async function watchCleanup(steps: CleanupStep[], index: number) {
+    const step = steps[index]!;
+    const seen = await watchTransaction(step.hash, { cancelled: () => cancelledRef.current });
+    if (cancelledRef.current) return;
+    if (!seen) {
+      setWizard({ stage: "cleanup", steps, index, watching: false, timedOut: true });
+      return;
+    }
+    const next = index + 1;
+    if (next < steps.length) {
+      setWizard({ stage: "cleanup", steps, index: next, watching: true, timedOut: false });
+      void watchCleanup(steps, next);
+    } else {
+      await startMerge();
+    }
+  }
+
+  async function watch(step: CleanupStep, stage: "merge") {
     const seen = await watchTransaction(step.hash, { cancelled: () => cancelledRef.current });
     if (cancelledRef.current) return;
     if (!seen) {
       setWizard({ stage, step, watching: false, timedOut: true });
       return;
     }
-    if (stage === "cleanup") await startMerge();
-    else setWizard({ stage: "done" });
+    setWizard({ stage: "done" });
   }
 
   return (
@@ -214,15 +242,33 @@ export default function Cleanup() {
           </section>
         )}
 
-        {(wizard.stage === "cleanup" || wizard.stage === "merge") && (
+        {wizard.stage === "cleanup" && (
           <SigningStepCard
-            step={wizard.step}
-            isMerge={wizard.stage === "merge"}
+            step={wizard.steps[wizard.index]!}
+            isMerge={false}
+            progress={
+              wizard.steps.length > 1
+                ? { current: wizard.index + 1, total: wizard.steps.length }
+                : undefined
+            }
             watching={wizard.watching}
             timedOut={wizard.timedOut}
             onKeepWaiting={() => {
               setWizard({ ...wizard, watching: true, timedOut: false });
-              void watch(wizard.step, wizard.stage);
+              void watchCleanup(wizard.steps, wizard.index);
+            }}
+          />
+        )}
+
+        {wizard.stage === "merge" && (
+          <SigningStepCard
+            step={wizard.step}
+            isMerge
+            watching={wizard.watching}
+            timedOut={wizard.timedOut}
+            onKeepWaiting={() => {
+              setWizard({ ...wizard, watching: true, timedOut: false });
+              void watch(wizard.step, "merge");
             }}
           />
         )}
@@ -260,12 +306,15 @@ export default function Cleanup() {
 function SigningStepCard({
   step,
   isMerge,
+  progress,
   watching,
   timedOut,
   onKeepWaiting,
 }: {
   step: CleanupStep;
   isMerge: boolean;
+  /** For a split cleanup: which transaction of how many. */
+  progress?: { current: number; total: number };
   watching: boolean;
   timedOut: boolean;
   onKeepWaiting: () => void;
@@ -278,6 +327,11 @@ function SigningStepCard({
       style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12 }}
     >
       <span className="eyebrow">{step.title}</span>
+      {progress && (
+        <p style={{ fontSize: 13, color: "var(--muted2)" }}>
+          Transaction {progress.current} of {progress.total} — sign and submit each in order.
+        </p>
+      )}
       <p style={{ fontSize: 14, color: "var(--muted)" }}>{step.description}</p>
       {isMerge && (
         <p
