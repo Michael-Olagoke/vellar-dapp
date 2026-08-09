@@ -1,5 +1,5 @@
 import { dockerBuildExecutor, stubBuildExecutor, type BuildExecutor } from "./executor";
-import { resolveNetwork, type Network } from "./network-config";
+import { resolveNetwork, type Network } from "@vellar/service-kit";
 
 export interface WorkerRuntimeConfig {
   /** The explicit, cross-checked network (RA-10). Resolved from STELLAR_NETWORK

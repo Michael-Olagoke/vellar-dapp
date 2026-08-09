@@ -11,7 +11,7 @@
 // itself; it just refuses single-key-on-mainnet. See the attestor design note
 // in docs/security-audit.md (FIX 4) for the intended smart-account attestor.
 
-import type { Network } from "./network-config";
+import type { Network } from "@vellar/service-kit";
 
 export class SingleKeyAttestorOnMainnetError extends Error {
   constructor() {

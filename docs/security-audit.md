@@ -780,7 +780,12 @@ health monitoring says healthy. Downgraded High→Medium only because both manif
 >   `DATABASE_URL`, and the gateway CORS/rate-limit/body-cap defaults. The extension is the reference
 >   for the right shape: absence yields the safe branch.
 
-### RA-10 — `attestor-guard` mainnet check is bypassed by an unset passphrase ℹ️ Info → tracked with M5 `[my code]`
+### RA-10 — Network classification derived from a passphrase that defaults to testnet (a CLASS, 3 services) 🟡 Medium `[my code]`
+
+_Originally filed as "attestor-guard mainnet check bypassed by an unset passphrase" (Info, tracked
+with M5). The fix's broadened sweep showed it is not one site but a **class** — a security decision
+derived from a value whose default is the permissive side — present in **three** services. Re-rated
+Medium and closed as a class._
 
 `services/worker-service/src/attestor-guard.ts:16`. `attestorNetwork` returns `"mainnet"` only on an
 **exact** `MAINNET_PASSPHRASE` match; an unset `STELLAR_NETWORK_PASSPHRASE` defaults to the testnet
@@ -827,9 +832,56 @@ signal (network passphrase, not `NODE_ENV`), and it only bites when the attestor
 >   (10 cases incl. both mismatch directions, unknown network, unrecognized passphrase, and naming all
 >   disagreeing values), `attestor-guard.test.ts` (M5 refusal given a known network).
 >
-> **This RA-10 fix also motivated a broadened sweep** for the whole class — any security decision
-> derived from a defaulted value whose default is the permissive side (RA-4, RA-10, and the escape
-> hatches are three instances). See the sweep results appended below.
+> **RA-10 is a CLASS, closed across all three services it appears in.** A broadened sweep (below) —
+> for any security decision derived from a value whose default is the permissive side, not just the
+> env-flag shape RA-4 looked for — found the SAME passphrase-defaults-to-testnet inference in two more
+> places, both labelling a spend-budget ledger line:
+>
+> - `wallet-service/src/index.ts` — `budgetNetwork` was `passphrase === DEFAULTS ? "testnet" :
+"mainnet"`. A mainnet wallet-service that forgot the passphrase would meter its **mainnet** sponsor/
+>   create spend against the **testnet** budget line — testnet and mainnet sharing one ceiling, so the
+>   per-network cap isn't enforced per network.
+> - `policy-service/src/index.ts` — identical, for the deploy budget line (and `deps.network`, which
+>   flows into the L1 verify-attach decode).
+>
+> Both now derive the network from the shared `resolveNetwork` (promoted to **`@vellar/service-kit`**
+> so all three services use one implementation) off the explicit, required `STELLAR_NETWORK`, cross-
+> checked and fail-closed. **`STELLAR_NETWORK=testnet` added to the wallet + policy dev scripts** (the
+> deploy already sets it in `render.yaml`, and the all-in-one process — which imports both services —
+> is covered by that one setting).
+>
+> **Why boot-refusal is the right strictness here, not accidental inheritance of the worker's gate:**
+> the wallet/policy sites label a budget ledger, which is milder than the worker's mainnet security
+> gate — but a service that **cannot coherently tell which network it is on must not spend on a
+> funding path** (V5 already requires guards to key off server config). Converting a silent
+> mislabel into a loud boot failure is correct: the failure surfaces the misconfiguration at deploy
+> time instead of letting mainnet spend accrue against a testnet ceiling. **No ledger migration is
+> needed** — the label is per rolling window, so any old-scheme rows age out; only new spend is
+> classified by the explicit signal. **Local dev and the deploy manifests are covered** (dev scripts
+>
+> - `render.yaml` set `STELLAR_NETWORK=testnet`); a service that boots without it now fails loudly
+>   rather than assuming testnet.
+
+### Broadened permissive-default sweep — the class, enumerated
+
+Sweep scope: every defaulted value feeding a security decision across `services/`, `packages/`,
+`apps/` (non-test). Broader than RA-4's env-flag sweep — RA-10 hid from that one because it gates on
+a **value's content** (a passphrase string), not a flag's presence. **22 sites classified; 3 were the
+unsafe permissive-default class (all the RA-10 network-label instances above, now closed); the rest
+are correct.** The dominant pattern is sound: numeric caps/limits/timeouts/TTLs default to **finite,
+restrictive** values (the control is ON out of the box), and unaccountable states fail closed.
+
+| Verdict                                | Sites                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Note                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| **unsafe-permissive-default** (closed) | `wallet-service/index.ts` budgetNetwork, `policy-service/index.ts` budgetNetwork, `policy-service/server.ts` verify-attach network                                                                                                                                                                                                                                                                                                                                                                                             | The RA-10 class — all three now use `resolveNetwork`. |
+| **already-fixed**                      | `persistence.ts` (NODE_ENV, RA-4 inversion), `network-config.ts` (STELLAR_NETWORK, RA-10), `ALLOW_INMEMORY` (defaults off), worker `config.ts` passphrase (neutralized by the cross-check)                                                                                                                                                                                                                                                                                                                                     | Prior fixes.                                          |
+| **safe-default** (12)                  | `ALLOW_SINGLE_KEY_ATTESTOR` (off), gateway `CORS_ORIGIN` (specific localhost, not `*`), `RATE_LIMIT_*` (120/min on), `MAX_BODY_BYTES`/`REQUEST_TIMEOUT_MS` (1 MiB / 30s), `BUDGET_*` ceilings (finite; unaccountable → `createUnavailableBudget` refuses), `SPONSOR_MAX_FEE_STROOPS` (0.1 XLM tight), docker sandbox caps (timeout/mem/cpu/pids finite + `--network=none`), `VERIFY_QUEUE_MAX_ACTIVE`, attestation TTL/reap/attempts, extension pair-origins + `WXT_PUBLIC_MAINNET_RPC_URL` (fail-closed), web `NEXT_PUBLIC_*` | Default is the restrictive side; verified, no change. |
+| **not-a-security-decision** (3)        | `HORIZON_URL`, provider-sdk request timeout, extension `WXT_PUBLIC_API_URL`                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Defaulted but feeds no security decision.             |
+
+Rule going forward (the class): **never derive a security decision from a value whose default is the
+permissive side.** If a decision needs a signal, make the signal explicit and required, fail closed on
+its absence, and cross-check any value that has to keep a default for another purpose (like a
+passphrase needed for signing).
 
 ### RA-5 — Cleanup builder pays the full asset balance **before** cancelling offers (ignores selling liabilities) 🟡 Medium `[my code]`
 

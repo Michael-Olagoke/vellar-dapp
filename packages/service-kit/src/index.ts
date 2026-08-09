@@ -19,6 +19,13 @@ export {
 } from "./persistence";
 
 export {
+  resolveNetwork,
+  NetworkConfigError,
+  type Network,
+  type NetworkInputs,
+} from "./network-config";
+
+export {
   withinCeiling,
   createUnavailableBudget,
   budgetLimitsFromEnv,
