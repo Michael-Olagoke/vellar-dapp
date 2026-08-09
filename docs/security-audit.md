@@ -725,6 +725,14 @@ management DoS + session-graph disclosure, **not** an authz bypass.
 >   `docs/architecture-analysis.md` (the "What passes for a session" + "Where authorization is real"
 >   passages) and in the M1 finding above was corrected — a conclusion built on the old premise, not
 >   just the sentence, so a later reader doesn't re-derive the stale rating.
+>
+> **⚠ CORRECTION (RA-11, branch `security/session-client-seam`): "CLOSED" above was SERVER-ONLY.**
+> The scoped re-audit of this surface found the M1 commit reshaped the server routes but **orphaned
+> the web client** — `listSessions` sent no bearer (permanent 401) and `revokeSession` DELETEd the
+> removed route and swallowed the 404 as success (revoke was a silent fail-open no-op). The guard was
+> correct but _unreachable by the real client_, and the client's mocked-fetch tests pinned the broken
+> behavior. Fixed under RA-11 with a **seam-crossing** test (real client ↔ real `buildServer`). The
+> server-side facts in this block hold; the feature is only now delivered end-to-end.
 
 ### RA-4 — `ALLOW_INMEMORY` fail-closed boot guard is **inert** on the deploy targets 🟡 Medium `[my code]`
 
@@ -883,6 +891,16 @@ permissive side.** If a decision needs a signal, make the signal explicit and re
 its absence, and cross-check any value that has to keep a default for another purpose (like a
 passphrase needed for signing).
 
+> **⚠ CORRECTION (RA-11): the sweep missed a 4th related site — a DIFFERENT axis of the same class.**
+> This sweep hunted _defaulted-value_ network inference. But `wallet-service`'s **create** budget line
+> keyed its network off the **request body** (`parsed.data.network`), not off config — a
+> _body-vs-config_ variant of "a security decision trusting an untrusted/wrong source." It survived
+> because it wasn't a `?? default` shape. Found by the #232 re-audit (H-3), fixed under RA-11: the
+> create line now meters on `deps.budgetNetwork` (from `resolveNetwork`), and **all three
+> `tryConsume` sites are re-confirmed to key off server config** (sponsor, create, policy-deploy). The
+> rule generalizes: a network/security label must come from server config, whether the risk is a
+> permissive _default_ or a trusted _request body_.
+
 ### RA-5 — Cleanup builder pays the full asset balance **before** cancelling offers (ignores selling liabilities) 🟡 Medium `[my code]`
 
 `services/lifecycle-service/src/builder.ts:59` (+ `horizon.ts` never parses `selling_liabilities`).
@@ -907,6 +925,12 @@ irreversible merge on partial cleanup — a liveness/correctness bug, not a safe
 > holding an asset it also sells on an open offer emits the cancel before the payment (asserted every
 > `manageSellOffer` precedes every `payment`), and the end-to-end op order is now
 > `manageSellOffer → payment → changeTrust → manageData`.
+>
+> **⚠ CORRECTION (RA-11): "end-to-end" was builder-only.** The re-audit found the cleanup WIZARD
+> consumer signed only `steps[0]` of a multi-transaction split (>100 ops) and dead-ended at a 409
+> merge, so end-to-end cleanup was NOT delivered for large accounts. The builder ordering + split
+> are correct (safety held — no fund loss, merge preflight fail-closed); the wizard is fixed under
+> RA-11 to walk every chunk, with a multi-chunk e2e proven to catch the drop.
 
 ### RA-6 — V3 detach invariant is pinned only at the pure helper; the attach/detach wiring is untested 🟡 Medium `[my code]`
 
@@ -933,6 +957,13 @@ own removal). No live bypass today; a test-coverage gap on a fund-lock-critical 
 > path is the tested path — the refactor the finding feared (inlining a `SignerLimits` map to make the
 > policy a required co-signer) would now break these tests instead of shipping green. The browser-only
 > `SignerKey`/`SignerStore` enums are injected, keeping the action module SSR/test-safe.
+>
+> **⚠ CORRECTION (RA-11): the "production path is the tested path" claim is slightly too strong.**
+> The re-audit's L-3 found the `connector-factory → createPolicySignerActions` DELEGATION edge itself
+> is untested (no `connector-factory` test exists; the helper is imported directly), so a refactor
+> that _abandons_ the helper and inlines a `SignerLimits` map would still ship green. The wiring
+> assertion inside `createPolicySignerActions` is real and load-bearing; the residual gap is the thin
+> forwarding wrapper. Low — tracked as RA-11/L-3, a cheap follow-up on a fund-lock invariant.
 
 ### RA-7 — `isBlockedAddress` misses hex-form IPv4-mapped + NAT64 IPv6 ℹ️ Info `[my code]`
 
@@ -998,14 +1029,77 @@ the way the kit actually produces the value.
 > lines it mirrors. Rule going forward: any test asserting on a decoded passkey-kit XDR shape must be
 > built from (or pinned against) the real kit shape, never hand-fit to the parser.
 
+### RA-11 — Server↔client SEAM DRIFT: contract changes shipped without updating (or seam-testing) the consumer 🔴 High `[my code]`
+
+A **scoped re-audit of the #232 session surface** (M1 introduced a bearer capability to a design with
+no app-layer auth — the same category that produced RA-1/RA-2) found the server-side capability
+**genuinely sound** (narrow scope, expiry-as-absence, no window-slide-on-reject, no leakage, hashed
+audit ref verified) — but the **client** was orphaned, and the pattern turned out to span multiple PRs.
+This is the sibling of RA-9: **RA-9 was tests asserting what the code does rather than what the
+_library_ produces; RA-11 is tests asserting what each _side_ does rather than what the two sides
+_agree on_.** A contract change between server and client needs a test that crosses the seam.
+
+Findings (fixed on branch `security/session-client-seam`):
+
+- **RA-11-A [High] — M1 orphaned the web session client (#232).** `apps/web/lib/http-backend.ts`:
+  `listSessions` sent no `Authorization` bearer → the M1 guard 401s → the device list never rendered;
+  `revokeSession` called the **removed** `DELETE /wallet/session/:id` → 404 → and **swallowed the 404
+  as success** → every user-initiated revoke was a silent fail-open no-op on the lost/compromised-device
+  path. The client's mocked-fetch tests pinned exactly this (asserting the removed URL + 404-as-success).
+  **Fix:** the client sends the bearer, `revokeSession` POSTs `/wallet/sessions/revoke` with
+  `{targetSessionId}` + bearer and **throws on any non-2xx** (the 404-swallow is gone; audited the rest
+  of `http-backend` — the only other status special-case, `lookupContractId`'s 404→undefined, is a
+  legitimate "unknown passkey" semantic, kept). The mocked-fetch session tests are **replaced by a
+  seam-crossing integration test**: the real client driven against the real `buildServer` (Fastify
+  `inject`→fetch adapter), covering every session route — **proven to catch the original bug** (reverting
+  to the old client fails 3 seam tests the old mocked tests passed). Added `@vellar/wallet-service/server`
+  subpath export + web devDep + the `passkey-kit` vitest inline-deps the server import needs.
+- **RA-11-B [High] — create budget metered on the request body, not server config (H-3, V5).** Covered
+  in the RA-10 sweep correction above: `wallet-service` create line keyed off `parsed.data.network`, so
+  an attacker POSTing a mismatched `network` split relayer-funded create spend across the
+  testnet/mainnet partitions (2× the effective ceiling). **Fix:** meter on `deps.budgetNetwork` from
+  `resolveNetwork`; all three `tryConsume` sites re-confirmed config-keyed.
+- **RA-11-C [Medium] — cleanup wizard dropped split chunks (M-1).** Covered in the RA-5 correction:
+  the wizard signed only `steps[0]` of a >100-op split and dead-ended at a 409 merge. **Fix:** the wizard
+  walks every chunk (progress "Transaction n of m") before merging; a multi-chunk e2e proves it.
+- **RA-11-D [Low] — a SECOND orphan from a DIFFERENT PR (#229).** The route-drift enumeration (run
+  because RA-11-A proved the class isn't PR-scoped) found #229's H3/FIX 6 stopped exposing the raw build
+  `log` on the verification API (it leaked host paths / internal IPs) and returns a sanitized
+  `statusDetail` — but `packages/verification-sdk`'s `PublicVerificationRecord` still declared `log?` and
+  omitted `statusDetail`, and `apps/web/app/verify/page.tsx` rendered a "Show build log" toggle behind
+  `record.log` (silently gone; `statusDetail` unreachable). Graceful degradation, not a crash. **Fix:**
+  SDK type + verify page consume `statusDetail`.
+- **RA-11-E [Low, residual] — `/policies/deploy` client not verifiable in-repo (#230).** L1 added
+  422/503 failure modes to `/policies/deploy`; its client lives in the **external** `vellar-sdk` npm
+  package (not in this repo), so its handling **cannot be confirmed here**. Flagged for review against
+  the separate `vellar-sdk` repo — if that client assumes 2xx, it's a candidate third orphan.
+
+Route-drift enumeration verdict (all 5 PRs): the wallet `/create` + `/submit` new 403/503 modes are
+**correctly** handled by the web client's typed-error path; `/wallet/session*` (RA-11-A) and the
+verification `log` field (RA-11-D) were orphaned; `/policies/deploy` (RA-11-E) is external-only.
+
+> **Status (RA-11): A/B/C/D CLOSED (branch `security/session-client-seam`), each with a test proven to
+> catch its bug; the seam-crossing test is the durable fix — it makes the whole class recur-proof for
+> the wallet session routes. E (external SDK) and the RA-6/L-3 delegation-edge gap remain as flagged
+> follow-ups.** Lesson recorded: **any server↔client contract change needs a seam-crossing test; a
+> mocked-fetch client test can only assert what the client does.**
+
 ### Re-audit bottom line
 
 - **Closed by passing test (verified by reading assertions):** C1/H1/V2, V1 derivation gate, H2, H3,
-  M2, M6-readiness, M7, L1, L3, L4, L5, L6/L6b.
+  M2, M6-readiness, M7, L1, L3, L4, L5, L6/L6b; RA-1, RA-2, RA-9 (#231); RA-4, RA-10 + the
+  network-label class (#233); RA-3/M1, RA-5, RA-6 **server-side** (#232); **RA-11-A/B/C** (client seam,
+  create-budget V5, cleanup-chunk walk) + **RA-11-D** (verification `statusDetail`), each with a
+  seam-crossing or bug-catching test (#`security/session-client-seam`).
 - **Closed by doc/config/deferral (NOT code-fixed):** M3, M4, M5, M8, M9 (see RA-8).
-- **Open / partial:** RA-1, RA-2 (funding-path Highs), RA-3 (M1), RA-4, RA-5, RA-6, RA-7.
-- **Mainnet: NO-GO** until RA-1, RA-2, M1 are fixed+tested, plus the deferred prerequisites (M5
-  multisig attestor, V3 detach UI) and the two V6 dashboard facts (L2 port firewalling, M9
-  autoDeploy/branch-protection) are confirmed. Every verdict remains conditional on the **unaudited**
+- **Open / partial:** RA-7 (latent IPv6, Info); RA-11-E (`/policies/deploy` external `vellar-sdk`
+  client — unverifiable in-repo); RA-6/L-3 (connector-factory delegation-edge test — cheap follow-up);
+  RA-3's L-1/L-2/L-5 (list-route inject-clock seam, sibling-id exposure, stale-record display — all Low,
+  acceptable-with-documentation).
+- **Mainnet: NO-GO** until the deferred prerequisites (M5 multisig attestor, V3 detach UI) are done, the
+  two V6 dashboard facts (L2 port firewalling, M9 autoDeploy/branch-protection) are confirmed, and
+  RA-11-E is checked against the external `vellar-sdk`. The funding-path Highs (RA-1/RA-2) and the
+  session/client Highs (RA-11-A/B) are now fixed+tested. Every verdict remains conditional on the
+  **unaudited**
   `vellar-sdk` / `passkey-kit` (passkey ceremony, session store, address derivation this repo
   enforces against — and the V1→V2 credential upgrade that drives RA-1 lives in that unread kit).

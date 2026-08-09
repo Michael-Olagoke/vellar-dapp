@@ -187,7 +187,7 @@ describe("session client ↔ server seam (real buildServer)", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 20_000);
 
   it("listSessions WITHOUT a bearer is rejected by the real server (seam would hide this with a mock)", async () => {
     const { app, client } = await seamBackend();
@@ -200,7 +200,7 @@ describe("session client ↔ server seam (real buildServer)", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 20_000);
 
   it("revokeSession: hits the REAL /wallet/sessions/revoke route and actually revokes (not a silent no-op)", async () => {
     const { app, client } = await seamBackend();
@@ -226,7 +226,7 @@ describe("session client ↔ server seam (real buildServer)", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 20_000);
 
   it("revokeSession THROWS on a non-existent target (no 404-swallowed-as-success)", async () => {
     const { app, client } = await seamBackend();
@@ -239,7 +239,7 @@ describe("session client ↔ server seam (real buildServer)", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 20_000);
 
   it("revokeSession without a valid bearer is rejected (401), not silently accepted", async () => {
     const { app, client } = await seamBackend();
@@ -251,5 +251,5 @@ describe("session client ↔ server seam (real buildServer)", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 20_000);
 });
