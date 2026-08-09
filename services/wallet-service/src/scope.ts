@@ -1,4 +1,4 @@
-import { Address, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Address, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 
 // Route-level funding-path scoping (security-audit.md C1 + H1 + V2).
 //
@@ -24,6 +24,33 @@ export class ScopeError extends Error {
   }
 }
 
+/**
+ * The `SorobanAddressCredentials` for an auth entry, across ALL address-bound
+ * credential variants — or undefined for source-account credentials.
+ *
+ * The production signer (`passkey-kit@0.14.0`) never emits V1: it upgrades every
+ * signed entry IN PLACE to `sorobanCredentialsAddressV2` (auth-payload.js:65-67)
+ * and refuses to sign a non-address-bound payload. Matching only the V1 string
+ * (the RA-1 defect) therefore returned [] for real traffic — a fail-closed break
+ * — and skipped attacker V2 legs in a mixed tx. All three address-bound arms
+ * (`address` V1, `addressV2`, `addressWithDelegates`) wrap the same
+ * `SorobanAddressCredentials`, so the subject address is read uniformly.
+ */
+function addressCredentials(
+  creds: xdr.SorobanCredentials,
+): xdr.SorobanAddressCredentials | undefined {
+  switch (creds.switch().name) {
+    case "sorobanCredentialsAddress":
+      return creds.address();
+    case "sorobanCredentialsAddressV2":
+      return creds.addressV2();
+    case "sorobanCredentialsAddressWithDelegates":
+      return creds.addressWithDelegates().addressCredentials();
+    default:
+      return undefined; // sorobanCredentialsSourceAccount — no address subject
+  }
+}
+
 /** Every address-credential auth subject (smart-account C-address) in a single
  * signed transaction. Returns [] for an unparseable xdr or a tx with no
  * address-credential auth entries. */
@@ -40,8 +67,9 @@ export function extractAddressAuthSubjects(signedXdr: string, networkPassphrase:
   for (const op of tx.operations) {
     if (op.type !== "invokeHostFunction" || !op.auth) continue;
     for (const entry of op.auth) {
-      if (entry.credentials().switch().name !== "sorobanCredentialsAddress") continue;
-      subjects.push(Address.fromScAddress(entry.credentials().address().address()).toString());
+      const addrCreds = addressCredentials(entry.credentials());
+      if (!addrCreds) continue; // source-account: no subject to attribute
+      subjects.push(Address.fromScAddress(addrCreds.address()).toString());
     }
   }
   return subjects;

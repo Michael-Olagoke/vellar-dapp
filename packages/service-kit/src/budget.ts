@@ -8,9 +8,11 @@
 //    never a request body's network field (V5).
 //  - FAIL CLOSED: if the ledger cannot be accounted (no DB / DB down), refuse —
 //    never sponsor unmetered. createUnavailableBudget is that refusing stub.
-//  - Check + record are ONE atomic statement in the Postgres impl (see
-//    pg-budget), so two concurrent requests cannot both pass before either
-//    records.
+//  - Check + record are serialized against concurrent same-(line,network)
+//    callers in the Postgres impl (a per-key pg_advisory_xact_lock taken before
+//    the aggregate read; see pg-budget, RA-2), so two concurrent requests cannot
+//    both pass before either records. A single conditional-INSERT is NOT enough
+//    under READ COMMITTED.
 
 export type BudgetLine = "sponsor" | "deploy" | "create";
 export type BudgetNetwork = "testnet" | "mainnet";

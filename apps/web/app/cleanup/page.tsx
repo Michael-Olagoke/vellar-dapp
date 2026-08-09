@@ -33,12 +33,16 @@ export default function Cleanup() {
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
-  useEffect(
-    () => () => {
+  // The unmount cleanup LATCHES cancelledRef, so every (re)mount must un-latch
+  // it. React StrictMode mounts → unmounts → remounts, so without the reset the
+  // remounted wizard is born cancelled: watch() bails out on its first check and
+  // the flow stalls on "Waiting for this transaction…" forever.
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
       cancelledRef.current = true;
-    },
-    [],
-  );
+    };
+  }, []);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);

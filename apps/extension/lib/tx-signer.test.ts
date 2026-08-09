@@ -40,18 +40,42 @@ vi.mock("passkey-kit", () => {
   return { PasskeyKit };
 });
 
+// The credential shape to build. passkey-kit@0.14 signs V2 (upgrades V1 in place
+// at auth-payload.js:67), so V2 is the REAL shape reaching the signer; the filter
+// must match all address-bound variants (RA-1), not just the V1 string.
+type CredKind = "v1" | "v2" | "delegates";
+
+function walletAddressCreds(): xdr.SorobanAddressCredentials {
+  return new xdr.SorobanAddressCredentials({
+    address: Address.fromString(WALLET).toScAddress(),
+    nonce: xdr.Int64.fromString("0"),
+    signatureExpirationLedger: 0,
+    signature: xdr.ScVal.scvVoid(),
+  });
+}
+
+function walletCredentials(kind: CredKind): xdr.SorobanCredentials {
+  switch (kind) {
+    case "v1":
+      return xdr.SorobanCredentials.sorobanCredentialsAddress(walletAddressCreds());
+    case "v2":
+      return xdr.SorobanCredentials.sorobanCredentialsAddressV2(walletAddressCreds());
+    case "delegates":
+      return xdr.SorobanCredentials.sorobanCredentialsAddressWithDelegates(
+        new xdr.SorobanAddressCredentialsWithDelegates({
+          addressCredentials: walletAddressCreds(),
+          delegates: [],
+        }),
+      );
+  }
+}
+
 // Build a single-op invokeHostFunction whose one auth entry is address-bound to
-// WALLET, so the signer's filter matches it.
-function buildTxWithWalletAuth(): string {
+// WALLET, so the signer's filter matches it. Defaults to V2 — the real shape the
+// kit produces — so the test exercises production traffic, not a legacy V1 shape.
+function buildTxWithWalletAuth(kind: CredKind = "v2"): string {
   const authEntry = new xdr.SorobanAuthorizationEntry({
-    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
-      new xdr.SorobanAddressCredentials({
-        address: Address.fromString(WALLET).toScAddress(),
-        nonce: xdr.Int64.fromString("0"),
-        signatureExpirationLedger: 0,
-        signature: xdr.ScVal.scvVoid(),
-      }),
-    ),
+    credentials: walletCredentials(kind),
     rootInvocation: new xdr.SorobanAuthorizedInvocation({
       function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
         new xdr.InvokeContractArgs({
@@ -152,4 +176,23 @@ describe("signTransactionXdr (L4 expiration binding)", () => {
     // Nothing was signed.
     expect(signAuthEntryCalls).toHaveLength(0);
   });
+
+  // RA-1: the wallet's real auth entries are V2 (or with-delegates), not V1. The
+  // signer must sign each address-bound variant bound to the paired wallet — a
+  // V1-only filter would skip them and throw "no auth entries for the wallet".
+  it.each(["v1", "v2", "delegates"] as const)(
+    "signs the wallet's %s address-bound auth entry",
+    async (kind) => {
+      const { signTransactionXdr } = await import("./tx-signer");
+      const signedXdr = await signTransactionXdr({
+        xdr: buildTxWithWalletAuth(kind),
+        wallet,
+        deviceKeyPair,
+        deviceRawPublicKey,
+        getTrustedLatestLedger: async () => 1_000_000,
+      });
+      expect(typeof signedXdr).toBe("string");
+      expect(signAuthEntryCalls).toHaveLength(1);
+    },
+  );
 });

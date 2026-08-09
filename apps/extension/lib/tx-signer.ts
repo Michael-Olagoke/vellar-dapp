@@ -1,4 +1,5 @@
 import { Buffer } from "buffer";
+import type { xdr } from "@stellar/stellar-sdk";
 import type { Signer } from "passkey-kit";
 import { signWithDeviceKey } from "./device-key";
 import {
@@ -60,7 +61,7 @@ export async function signTransactionXdr(input: {
   const { wallet } = input;
   const networkPassphrase = NETWORK_PASSPHRASES[wallet.network];
 
-  const [{ PasskeyKit }, { Address, TransactionBuilder }] = await Promise.all([
+  const [{ PasskeyKit }, { Address, TransactionBuilder, xdr }] = await Promise.all([
     import("passkey-kit"),
     import("@stellar/stellar-sdk"),
   ]);
@@ -91,6 +92,25 @@ export async function signTransactionXdr(input: {
     throw new Error("Fee-bump transactions cannot be signed by the extension");
   }
 
+  // The SorobanAddressCredentials across every address-bound variant, or
+  // undefined for source-account. passkey-kit@0.14 signs V2 (upgrades V1 in
+  // place, auth-payload.js:67), so a V1-only match (RA-1) skipped the wallet's
+  // real entries and signed nothing. All three arms wrap the same struct.
+  const addrCreds = (
+    creds: ReturnType<xdr.SorobanAuthorizationEntry["credentials"]>,
+  ): xdr.SorobanAddressCredentials | undefined => {
+    switch (creds.switch().name) {
+      case "sorobanCredentialsAddress":
+        return creds.address();
+      case "sorobanCredentialsAddressV2":
+        return creds.addressV2();
+      case "sorobanCredentialsAddressWithDelegates":
+        return creds.addressWithDelegates().addressCredentials();
+      default:
+        return undefined; // sorobanCredentialsSourceAccount — not a wallet subject
+    }
+  };
+
   const signer = createDeviceSigner(input.deviceKeyPair, input.deviceRawPublicKey);
   let signedAny = false;
 
@@ -98,11 +118,9 @@ export async function signTransactionXdr(input: {
     if (operation.type !== "invokeHostFunction" || !operation.auth) continue;
     for (let i = 0; i < operation.auth.length; i++) {
       const entry = operation.auth[i]!;
-      if (entry.credentials().switch().name !== "sorobanCredentialsAddress") continue;
-      const entryAddress = Address.fromScAddress(
-        entry.credentials().address().address(),
-      ).toString();
-      if (entryAddress !== wallet.address) continue;
+      const creds = addrCreds(entry.credentials());
+      if (!creds) continue;
+      if (Address.fromScAddress(creds.address()).toString() !== wallet.address) continue;
       // Explicit expiration ⇒ the kit does NOT call getLatestLedger on the
       // caller's rpcUrl (L4).
       operation.auth[i] = await kit.signAuthEntry(entry, signer, { expiration });

@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Cleanup from "./page";
@@ -58,14 +59,15 @@ const mergeStep = {
   hash: "b".repeat(64),
 };
 
-async function inspectWith(plan: typeof blockedPlan) {
+async function inspectWith(plan: typeof blockedPlan, { strict = false } = {}) {
   planMock.mockResolvedValue({ plan });
   window.localStorage.setItem("vellar.session", JSON.stringify(SESSION));
-  render(
+  const tree = (
     <WalletProvider>
       <Cleanup />
-    </WalletProvider>,
+    </WalletProvider>
   );
+  render(strict ? <StrictMode>{tree}</StrictMode> : tree);
   // AppShell restores the session asynchronously; wait for the form.
   fireEvent.change(await screen.findByLabelText(/old account/i), { target: { value: G1 } });
   fireEvent.change(screen.getByLabelText(/destination/i), { target: { value: G2 } });
@@ -103,6 +105,26 @@ describe("Cleanup wizard", () => {
     watchMock.mockResolvedValue(true); // every watched tx confirms immediately
 
     await inspectWith(blockedPlan);
+    fireEvent.click(screen.getByRole("button", { name: /start cleanup/i }));
+
+    await waitFor(() => expect(mergeMock).toHaveBeenCalledWith(G1, G2));
+    expect(await screen.findByText(/account closed/i)).toBeDefined();
+  });
+
+  // Regression: the unmount cleanup latches cancelledRef, and StrictMode mounts
+  // → unmounts → remounts. If the remount doesn't un-latch it, every watch()
+  // sees cancelled=true, returns before advancing, and the wizard stalls on the
+  // step card forever. Unlike the other cases this mock HONOURS the cancelled
+  // callback, exactly as the real watchTransaction does — that is what makes the
+  // latch observable here.
+  it("auto-advances to done after a StrictMode remount", async () => {
+    executeMock.mockResolvedValue({ steps: [cleanupStep], plan: blockedPlan });
+    mergeMock.mockResolvedValue({ step: mergeStep });
+    watchMock.mockImplementation(
+      async (_hash: string, options: { cancelled?: () => boolean }) => !options.cancelled?.(), // cancelled → never seen, mirroring the real watcher
+    );
+
+    await inspectWith(blockedPlan, { strict: true });
     fireEvent.click(screen.getByRole("button", { name: /start cleanup/i }));
 
     await waitFor(() => expect(mergeMock).toHaveBeenCalledWith(G1, G2));
