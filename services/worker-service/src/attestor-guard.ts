@@ -5,16 +5,13 @@
 // mainnet exposure. So: refuse to wire the single-key attestor against a
 // MAINNET registry unless an operator explicitly accepts the risk.
 //
-// See the attestor design note in docs/security-audit.md (FIX 4) for the
-// intended smart-account attestor.
+// RA-10: the network is now taken from the EXPLICIT, cross-checked
+// `resolveNetwork` (network-config.ts) — NOT inferred here from a passphrase
+// that has a testnet default. This guard no longer classifies the network
+// itself; it just refuses single-key-on-mainnet. See the attestor design note
+// in docs/security-audit.md (FIX 4) for the intended smart-account attestor.
 
-const MAINNET_PASSPHRASE = "Public Global Stellar Network ; September 2015";
-
-export type AttestorNetwork = "testnet" | "mainnet";
-
-export function attestorNetwork(networkPassphrase: string): AttestorNetwork {
-  return networkPassphrase === MAINNET_PASSPHRASE ? "mainnet" : "testnet";
-}
+import type { Network } from "./network-config";
 
 export class SingleKeyAttestorOnMainnetError extends Error {
   constructor() {
@@ -28,13 +25,14 @@ export class SingleKeyAttestorOnMainnetError extends Error {
   }
 }
 
-/** Throws when a single-key attestor would be wired against a mainnet registry
- * without the explicit override. No-op on testnet. */
+/** Throws when a single-key attestor would be wired against mainnet without the
+ * explicit override. Takes the resolved network directly (no passphrase
+ * inference — RA-10). No-op on testnet. */
 export function assertAttestorSafeForNetwork(opts: {
-  networkPassphrase: string;
+  network: Network;
   allowSingleKey: boolean;
 }): void {
-  if (attestorNetwork(opts.networkPassphrase) === "mainnet" && !opts.allowSingleKey) {
+  if (opts.network === "mainnet" && !opts.allowSingleKey) {
     throw new SingleKeyAttestorOnMainnetError();
   }
 }

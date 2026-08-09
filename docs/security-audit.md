@@ -790,10 +790,46 @@ run**. Surfaced by the RA-4 inertness sweep. Same class as RA-4 (unset ⇒ less-
 signal (network passphrase, not `NODE_ENV`), and it only bites when the attestor is enabled
 (`ATTESTOR_SECRET_KEY` + `ATTESTATION_REGISTRY_ID` set).
 
-> **Status (RA-10): OPEN — tracked with M5.** M5 (attestor-as-multisig) is already a deferred mainnet
-> prerequisite; fold this in there. Fix direction: derive the attestor's network from the same
-> explicit signal the rest of the mainnet posture uses and fail closed when the passphrase is unset
-> but a mainnet registry/RPC is configured, rather than defaulting the classification to testnet.
+> **Status (RA-10): CLOSED (branch `security/attestor-guard-hardening`) — as a guard-correctness
+> fix, decoupled from M5.** RA-10 was a defect in the guard that _holds the line_ until M5 is built,
+> not the M5 decision itself; a guard that fails open on a missing value must be sound BEFORE a
+> mainnet cutover, not fixed as part of it — so it was fixed on its own branch, not folded into M5.
+>
+> **Root cause addressed, not just the symptom.** The guard inferred "which network" from
+> `networkPassphrase` — a value whose real job is signing and which **defaults to the testnet
+> string**. Rather than make that inference fail closed (which would keep deriving a security
+> decision from a signing value with a permissive default — the exact class the sweep exists to
+> eliminate), the network is now an **explicit, required** setting:
+>
+> - **`resolveNetwork` (`worker-service/src/network-config.ts`)** reads `STELLAR_NETWORK`
+>   (`testnet | mainnet`), **required with NO default** — a missing value **refuses to boot**, it
+>   never resolves to the permissive side. The passphrase/RPC keep their signing/connection defaults,
+>   but the _security signal_ is `STELLAR_NETWORK`, which has none.
+> - **Mutual cross-check, both directions.** The declared network is verified coherent with the
+>   passphrase and the RPC host. It refuses when `testnet` is declared but the passphrase/RPC look
+>   like mainnet, AND when `mainnet` is declared but they look like testnet — a mismatch either way
+>   means the config is incoherent and the worker does not guess which half is right. An
+>   _unrecognized_ passphrase/RPC is treated as a disagreement (can't positively confirm → fail
+>   closed). (Contract ids are network-agnostic, so the registry can't be value-checked — only the
+>   passphrase and RPC host carry a network signature.)
+> - **Loud at boot, naming the disagreeing values.** `NetworkConfigError` lists which of the
+>   passphrase / RPC disagreed, so an operator hitting this at cutover knows exactly what to fix.
+>   `configFromEnv` calls it at load; `index.ts` surfaces it and `process.exit(1)`s.
+> - **The attestor guard no longer classifies the network** — `assertAttestorSafeForNetwork` takes
+>   the resolved `Network` directly. `STELLAR_NETWORK=testnet` is set in the worker's dev script and
+>   `render.yaml` (alongside the existing passphrase/RPC), so local dev and the committed config stay
+>   coherent.
+>
+> Verified end-to-end against the real `configFromEnv`: missing `STELLAR_NETWORK` → refused;
+> coherent testnet → boots; testnet-declared + mainnet RPC → refused (names the RPC); mainnet-declared
+>
+> - default (testnet) passphrase → refused (names the passphrase). Tests: `network-config.test.ts`
+>   (10 cases incl. both mismatch directions, unknown network, unrecognized passphrase, and naming all
+>   disagreeing values), `attestor-guard.test.ts` (M5 refusal given a known network).
+>
+> **This RA-10 fix also motivated a broadened sweep** for the whole class — any security decision
+> derived from a defaulted value whose default is the permissive side (RA-4, RA-10, and the escape
+> hatches are three instances). See the sweep results appended below.
 
 ### RA-5 — Cleanup builder pays the full asset balance **before** cancelling offers (ignores selling liabilities) 🟡 Medium `[my code]`
 
