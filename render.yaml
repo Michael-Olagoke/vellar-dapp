@@ -39,6 +39,11 @@ services:
         value: "https://soroban-testnet.stellar.org"
       - key: STELLAR_NETWORK_PASSPHRASE
         value: "Test SDF Network ; September 2015"
+      # RA-10: the EXPLICIT network signal. The worker refuses to boot without it
+      # (no default), and cross-checks it against the passphrase + RPC above.
+      # Must agree with them — flip all three together for a mainnet cutover.
+      - key: STELLAR_NETWORK
+        value: "testnet"
       - key: HORIZON_URL
         value: "https://horizon-testnet.stellar.org"
       # Allow the deployed frontend origin (update to the real vellar.xyz once live).

@@ -4,13 +4,14 @@ import {
   createUnavailableBudget,
   hostFromEnv,
   portFromEnv,
+  resolveNetwork,
   resolvePersistencePolicy,
   startService,
   tryConnectDb,
   type SpendBudget,
 } from "@vellar/service-kit";
 import type { DbHandle } from "./db/client";
-import { configFromEnv, DEFAULTS } from "./config";
+import { configFromEnv } from "./config";
 import { createPolicyDeployer } from "./deploy";
 import { buildServer, type PolicyServiceDeps } from "./server";
 import { SPENDING_POLICY_WASM_HASH } from "./templates";
@@ -80,8 +81,17 @@ deps.isReady = dbHandle ? () => dbHandle!.ping() : () => policy.action === "allo
 
 // FIX 3 deploy budget: Postgres-backed when durable, else fail-closed stub.
 // Network label from server config, never a request body (V5).
-deps.budgetNetwork =
-  config.networkPassphrase === DEFAULTS.networkPassphrase ? "testnet" : "mainnet";
+// RA-10 class: derive the spend-budget ledger label + the verify-attach network
+// from the EXPLICIT, required STELLAR_NETWORK (cross-checked vs passphrase + RPC),
+// not from a passphrase that defaults to testnet. An incoherent/missing network
+// refuses to boot — a service that can't tell which network it's on must not
+// meter spend or stamp a deploy 'deployed'. Server config, never a request body
+// (V5).
+deps.budgetNetwork = resolveNetwork({
+  network: process.env.STELLAR_NETWORK,
+  passphrase: config.networkPassphrase,
+  rpcUrl: config.rpcUrl,
+});
 const budget: SpendBudget = dbHandle
   ? createPgSpendBudget(dbHandle.db, { windowMs: BUDGET_WINDOW_MS, limits: deployLimits })
   : createUnavailableBudget();

@@ -3,6 +3,7 @@ import {
   createUnavailableBudget,
   hostFromEnv,
   portFromEnv,
+  resolveNetwork,
   resolvePersistencePolicy,
   startService,
   tryConnectDb,
@@ -77,8 +78,19 @@ deps.isReady = dbHandle ? () => dbHandle!.ping() : () => policy.action === "allo
 // FIX 3 budget: Postgres-backed when durable, otherwise a fail-closed stub that
 // refuses to fund (never sponsor/create unmetered). The network label is from
 // server config, never a request body (V5).
-const budgetNetwork =
-  config.relayer?.networkPassphrase === DEFAULTS.networkPassphrase ? "testnet" : "mainnet";
+// RA-10 class: the spend-budget ledger LABEL must not be inferred from a
+// passphrase that defaults to testnet — a mainnet service that forgot the
+// passphrase would meter its mainnet spend against the testnet budget line
+// (testnet + mainnet sharing one ceiling). Derive it from the EXPLICIT, required
+// STELLAR_NETWORK, cross-checked against the passphrase + RPC; an incoherent or
+// missing network refuses to boot (a service that can't tell which network it's
+// on must not spend on a funding path — V5). Keyed off server config, never a
+// request body (V5).
+const budgetNetwork = resolveNetwork({
+  network: process.env.STELLAR_NETWORK,
+  passphrase: config.relayer?.networkPassphrase ?? DEFAULTS.networkPassphrase,
+  rpcUrl: process.env.STELLAR_RPC_URL || DEFAULTS.rpcUrl,
+});
 let budget: SpendBudget;
 if (dbHandle) {
   const { createPgSpendBudget } = await import("@vellar/service-kit");

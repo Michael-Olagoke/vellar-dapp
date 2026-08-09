@@ -96,7 +96,7 @@ if (config.attestorSecretKey && config.attestationRegistryId) {
   // (unless explicitly overridden). Fail closed.
   try {
     assertAttestorSafeForNetwork({
-      networkPassphrase: config.networkPassphrase,
+      network: config.network,
       allowSingleKey: process.env.ALLOW_SINGLE_KEY_ATTESTOR === "1",
     });
   } catch (err) {

@@ -1,6 +1,12 @@
 import { dockerBuildExecutor, stubBuildExecutor, type BuildExecutor } from "./executor";
+import { resolveNetwork, type Network } from "@vellar/service-kit";
 
 export interface WorkerRuntimeConfig {
+  /** The explicit, cross-checked network (RA-10). Resolved from STELLAR_NETWORK
+   * and verified coherent with the passphrase + RPC at config time — the worker
+   * refuses to boot on an incoherent or missing network. Security decisions
+   * (the M5 attestor guard) read THIS, never an inference from the passphrase. */
+  network: Network;
   rpcUrl: string;
   /** Required: the worker shares verification-service's Postgres. Without it the
    * worker has no jobs to claim and exits with a loud error. */
@@ -37,8 +43,23 @@ export interface WorkerRuntimeConfig {
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
 
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerRuntimeConfig {
+  const rpcUrl = env.STELLAR_RPC_URL || TESTNET_RPC;
+  const networkPassphrase = env.STELLAR_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015";
+  // RA-10: resolve the network EXPLICITLY (STELLAR_NETWORK, required) and refuse
+  // to boot if it is missing or disagrees with the passphrase/RPC. This throws a
+  // NetworkConfigError naming the disagreeing values; index.ts surfaces it and
+  // exits. Note: the passphrase/RPC keep testnet defaults because they are
+  // needed as signing/connection values — the SECURITY signal is STELLAR_NETWORK,
+  // which has no default, so a missing network never resolves to the permissive
+  // side.
+  const network = resolveNetwork({
+    network: env.STELLAR_NETWORK,
+    passphrase: networkPassphrase,
+    rpcUrl,
+  });
   return {
-    rpcUrl: env.STELLAR_RPC_URL || TESTNET_RPC,
+    network,
+    rpcUrl,
     databaseUrl: env.DATABASE_URL || undefined,
     buildImage: env.VERIFY_BUILD_IMAGE || undefined,
     pollIdleMs: env.VERIFY_POLL_IDLE_MS ? Number(env.VERIFY_POLL_IDLE_MS) : 5000,
@@ -50,7 +71,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerRunti
     buildPidsLimit: env.VERIFY_BUILD_PIDS_LIMIT ? Number(env.VERIFY_BUILD_PIDS_LIMIT) : undefined,
     attestorSecretKey: env.ATTESTOR_SECRET_KEY || undefined,
     attestationRegistryId: env.ATTESTATION_REGISTRY_ID || undefined,
-    networkPassphrase: env.STELLAR_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015",
+    networkPassphrase,
     attestationTtlLedgers: env.ATTESTATION_TTL_LEDGERS
       ? Number(env.ATTESTATION_TTL_LEDGERS)
       : undefined,
