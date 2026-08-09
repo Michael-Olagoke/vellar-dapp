@@ -26,12 +26,16 @@ export const wallets = pgTable(
 );
 
 export const walletSessions = pgTable("wallet_sessions", {
-  // text, not uuid: junk ids in GET /wallet/session/:id must 404, not 500 on cast.
+  // text, not uuid: junk ids in a session lookup must 404, not 500 on cast.
   id: text("id").primaryKey(),
   contractId: text("contract_id").notNull(),
   network: text("network").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   lastActiveAt: timestamp("last_active_at", { withTimezone: true, mode: "date" }).notNull(),
+  // A session id is a bearer capability for the session routes (RA-3/M1), so it
+  // expires: 7-day sliding window, enforced by the guard. Rows past this are
+  // treated as absent. NOT NULL so a pre-expiry row can never read as immortal.
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
 });
 
 export const activityLogs = pgTable("activity_logs", {
