@@ -25,6 +25,13 @@ function decode(xdr: string) {
   return { ops: tx.operations.length, sequence: BigInt(tx.sequence) };
 }
 
+/** Decode a step's XDR and return its ordered op types. */
+function opTypes(xdr: string): string[] {
+  const tx = TransactionBuilder.fromXDR(xdr, PASSPHRASE);
+  if ("innerTransaction" in tx) throw new Error("unexpected fee-bump tx");
+  return tx.operations.map((o) => o.type);
+}
+
 const dataKeys = (n: number) => Array.from({ length: n }, (_, i) => `k${i}`);
 
 describe("buildCleanupSteps (L6 op-split)", () => {
@@ -75,6 +82,82 @@ describe("buildCleanupSteps (L6 op-split)", () => {
     const steps = buildCleanupSteps(account({ dataKeys: dataKeys(150) }), DEST, PASSPHRASE);
     expect(steps).toHaveLength(2);
     expect(steps[0]!.title).not.toBe(steps[1]!.title);
+  });
+});
+
+describe("buildCleanupSteps — offer/liability ordering (RA-5)", () => {
+  const USDC = { assetType: "credit_alphanum4", assetCode: "USDC", assetIssuer: DEST };
+
+  it("cancels offers BEFORE paying out balances (frees selling liabilities first)", () => {
+    // An account holding 100 USDC AND selling 40 USDC on an open offer: 40 is a
+    // selling liability, so only 60 is spendable. If the payment of the full 100
+    // ran before the cancel it would op_underfunded. The cancel must come first.
+    const steps = buildCleanupSteps(
+      account({
+        balances: [
+          { assetType: "native", balance: "100.0" },
+          { ...USDC, balance: "100" },
+        ],
+        offers: [
+          {
+            id: "7",
+            sellingAssetType: "credit_alphanum4",
+            sellingAssetCode: "USDC",
+            sellingAssetIssuer: DEST,
+            buyingAssetType: "native",
+            price: "1.0",
+          },
+        ],
+        openOffers: 1,
+      }),
+      DEST,
+      PASSPHRASE,
+    );
+    expect(steps).toHaveLength(1);
+    const types = opTypes(steps[0]!.xdr);
+    // Order: cancel the offer, THEN pay the balance, THEN remove the trustline.
+    expect(types).toEqual(["manageSellOffer", "payment", "changeTrust"]);
+    // Specifically: every manageSellOffer precedes every payment.
+    const lastCancel = types.lastIndexOf("manageSellOffer");
+    const firstPayment = types.indexOf("payment");
+    expect(lastCancel).toBeLessThan(firstPayment);
+  });
+
+  it("orders cancels before payments even across MANY offers and balances", () => {
+    const steps = buildCleanupSteps(
+      account({
+        balances: [
+          { assetType: "native", balance: "50.0" },
+          { ...USDC, balance: "10" },
+          { assetType: "credit_alphanum4", assetCode: "EURC", assetIssuer: DEST, balance: "5" },
+        ],
+        offers: [
+          {
+            id: "1",
+            sellingAssetType: "credit_alphanum4",
+            sellingAssetCode: "USDC",
+            sellingAssetIssuer: DEST,
+            buyingAssetType: "native",
+            price: "1",
+          },
+          {
+            id: "2",
+            sellingAssetType: "credit_alphanum4",
+            sellingAssetCode: "EURC",
+            sellingAssetIssuer: DEST,
+            buyingAssetType: "native",
+            price: "1",
+          },
+        ],
+        openOffers: 2,
+      }),
+      DEST,
+      PASSPHRASE,
+    );
+    const types = opTypes(steps[0]!.xdr);
+    const lastCancel = types.lastIndexOf("manageSellOffer");
+    const firstPayment = types.indexOf("payment");
+    expect(firstPayment).toBeGreaterThan(lastCancel);
   });
 });
 

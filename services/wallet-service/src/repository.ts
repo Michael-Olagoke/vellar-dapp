@@ -42,13 +42,26 @@ export interface SessionRecord {
   network: Network;
   createdAt: string;
   lastActiveAt: string;
+  /** When this session capability expires (ISO). A session id is a bearer
+   * capability for the session routes (security-audit.md RA-3/M1), so it MUST
+   * die: 7-day sliding window, matching the device signer's 7-day expiry — if
+   * one lifetime changes, change both. `find`/`listByContract` treat an expired
+   * row as ABSENT so an expired id never authorizes anything (and never gets a
+   * response distinguishing "expired" from "never existed"). */
+  expiresAt: string;
 }
 
 export interface SessionRepository {
   insert(record: SessionRecord): Promise<void>;
-  find(id: string): Promise<SessionRecord | undefined>;
-  /** Active sessions for an account, most recently active first (§5.1 device management). */
-  listByContract(contractId: string, network: Network): Promise<SessionRecord[]>;
+  /** Returns the session ONLY if it exists and is not expired (as of `asOf`,
+   * default now) — an expired session is indistinguishable from a missing one. */
+  find(id: string, asOf?: Date): Promise<SessionRecord | undefined>;
+  /** Non-expired sessions for an account, most recently active first (§5.1). */
+  listByContract(contractId: string, network: Network, asOf?: Date): Promise<SessionRecord[]>;
+  /** Slides a session forward on AUTHORIZED use: sets lastActiveAt=`at` and
+   * expiresAt=`at`+window. No-op (returns false) if the id is absent/expired, so
+   * a rejected id can never extend its own life. */
+  touch(id: string, at: Date, newExpiresAt: Date): Promise<boolean>;
   /** Revokes a session; false when it didn't exist. */
   delete(id: string): Promise<boolean>;
 }
@@ -87,17 +100,26 @@ export function createMemoryWalletRepository(): WalletRepository {
 
 export function createMemorySessionRepository(): SessionRepository {
   const sessions = new Map<string, SessionRecord>();
+  const isLive = (s: SessionRecord, asOf: Date) => new Date(s.expiresAt).getTime() > asOf.getTime();
   return {
     async insert(record) {
       sessions.set(record.id, record);
     },
-    async find(id) {
-      return sessions.get(id);
+    async find(id, asOf = new Date()) {
+      const s = sessions.get(id);
+      return s && isLive(s, asOf) ? s : undefined;
     },
-    async listByContract(contractId, network) {
+    async listByContract(contractId, network, asOf = new Date()) {
       return [...sessions.values()]
-        .filter((s) => s.contractId === contractId && s.network === network)
+        .filter((s) => s.contractId === contractId && s.network === network && isLive(s, asOf))
         .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
+    },
+    async touch(id, at, newExpiresAt) {
+      const s = sessions.get(id);
+      if (!s || !isLive(s, at)) return false;
+      s.lastActiveAt = at.toISOString();
+      s.expiresAt = newExpiresAt.toISOString();
+      return true;
     },
     async delete(id) {
       return sessions.delete(id);

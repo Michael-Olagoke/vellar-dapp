@@ -223,10 +223,13 @@ describe("POST /lifecycle/execute", () => {
     expect(step.hash).toMatch(/^[0-9a-f]{64}$/);
 
     const tx = TransactionBuilder.fromXDR(step.xdr, Networks.TESTNET);
+    // RA-5: offer cancels come FIRST — cancelling frees any selling liabilities
+    // so the subsequent payment can move the full asset balance without hitting
+    // op_underfunded. Payments then precede their trustline removals.
     expect("operations" in tx && tx.operations.map((o) => o.type)).toEqual([
+      "manageSellOffer", // cancel offer 42 (frees liabilities first)
       "payment", // USDC to destination
       "changeTrust", // remove USDC trustline
-      "manageSellOffer", // cancel offer 42
       "manageData", // delete "config"
     ]);
     expect(tx.signatures).toHaveLength(0); // UNSIGNED — user signs externally

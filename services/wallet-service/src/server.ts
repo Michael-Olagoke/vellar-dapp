@@ -1,4 +1,5 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import { createHash } from "node:crypto";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   registerHealth,
@@ -49,6 +50,33 @@ const listSessionsQuerySchema = z.object({
   network: networkSchema,
 });
 
+const revokeSessionBodySchema = z.object({
+  targetSessionId: z.string().min(1),
+});
+
+// A session id is a BEARER CAPABILITY for the session routes (security-audit.md
+// RA-3/M1): possession authorizes listing/reading/revoking sessions for the
+// account that session is bound to — nothing else. It expires on a 7-day sliding
+// window, matching the device signer's 7-day expiry (apps/extension L4); if one
+// lifetime changes, change both. It is NOT a general auth token: no other route
+// reads it, and it never grants signing or funding authority (those are on-chain
+// via __check_auth).
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** A non-reversible reference to a session id for the audit log — the raw id is
+ * a credential and must not be written to storage in plaintext. */
+function sessionRef(id: string): string {
+  return createHash("sha256").update(id).digest("hex").slice(0, 12);
+}
+
+/** The bearer session id from the Authorization header, or undefined. */
+function bearerSessionId(request: FastifyRequest): string | undefined {
+  const header = request.headers.authorization;
+  if (!header) return undefined;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match?.[1];
+}
+
 export interface WalletServiceDeps {
   submitter: TransactionSubmitter;
   wallets?: WalletRepository;
@@ -81,16 +109,35 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
   registerMetrics(app, "wallet-service");
 
   async function openSession(contractId: string, network: "testnet" | "mainnet") {
-    const timestamp = now().toISOString();
+    const at = now();
+    const timestamp = at.toISOString();
     const record: SessionRecord = {
       id: crypto.randomUUID(),
       contractId,
       network,
       createdAt: timestamp,
       lastActiveAt: timestamp,
+      expiresAt: new Date(at.getTime() + SESSION_TTL_MS).toISOString(),
     };
     await sessions.insert(record);
     return record;
+  }
+
+  /** Resolve the caller's live session capability from the bearer, or undefined
+   * when there is no header, the id is unknown, or the session has expired (an
+   * expired session is ABSENT — no response distinguishes it from a bogus id).
+   * On success it SLIDES the session forward (lastActiveAt + expiresAt), so only
+   * an authorized use extends its life; a rejected id cannot. */
+  async function resolveSessionCapability(
+    request: FastifyRequest,
+  ): Promise<SessionRecord | undefined> {
+    const id = bearerSessionId(request);
+    if (!id) return undefined;
+    const at = now();
+    const session = await sessions.find(id, at);
+    if (!session) return undefined;
+    await sessions.touch(id, at, new Date(at.getTime() + SESSION_TTL_MS));
+    return session;
   }
 
   app.post("/wallet/create", async (request, reply) => {
@@ -242,33 +289,58 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
     }
   });
 
-  app.get("/wallet/session/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const session = await sessions.find(id);
-    if (!session) return reply.code(404).send({ error: "session_not_found" });
+  // Session/device management (technical-doc.md §5.1). Every route below is
+  // gated on a bearer SESSION CAPABILITY (RA-3/M1): the caller proves control of
+  // a live session on the account before reading or revoking its sessions. The
+  // session id travels ONLY in the Authorization header / request body, never in
+  // a URL path or query — Fastify logs request URLs but not headers/bodies, so a
+  // credential must not sit in a logged URL. `unauthorized` is returned
+  // identically for a missing, unknown, expired, or wrong-account bearer, so no
+  // response reveals whether an id was ever valid.
+
+  // The caller's OWN session (from the bearer). No id in the URL.
+  app.get("/wallet/session", async (request, reply) => {
+    const session = await resolveSessionCapability(request);
+    if (!session) return reply.code(401).send({ error: "unauthorized" });
     return reply.send(session);
   });
 
-  // Session/device management (technical-doc.md §5.1: users can manage
-  // active sessions/devices).
+  // List the sessions for an account. The bearer must be a live session bound to
+  // exactly the queried contract+network — no cross-account enumeration.
   app.get("/wallet/sessions", async (request, reply) => {
     const parsed = listSessionsQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_query", details: parsed.error.issues });
     }
     const { contractId, network } = parsed.data;
+    const session = await resolveSessionCapability(request);
+    if (!session || session.contractId !== contractId || session.network !== network) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
     return reply.send({ sessions: await sessions.listByContract(contractId, network) });
   });
 
-  app.delete("/wallet/session/:id", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const existing = await sessions.find(id);
-    if (!existing) return reply.code(404).send({ error: "session_not_found" });
-    await sessions.delete(id);
+  // Revoke a session on the caller's OWN account. The target id is in the BODY
+  // (not the URL), and must belong to the same account as the bearer — a target
+  // on another account reads as not-found (no cross-account revoke, and the
+  // response does not confirm the target exists elsewhere).
+  app.post("/wallet/sessions/revoke", async (request, reply) => {
+    const session = await resolveSessionCapability(request);
+    if (!session) return reply.code(401).send({ error: "unauthorized" });
+    const parsed = revokeSessionBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_body", details: parsed.error.issues });
+    }
+    const target = await sessions.find(parsed.data.targetSessionId, now());
+    if (!target || target.contractId !== session.contractId || target.network !== session.network) {
+      return reply.code(404).send({ error: "session_not_found" });
+    }
+    await sessions.delete(target.id);
+    // Audit the event with a HASHED reference, never the raw id (a credential).
     await audit.record("session.revoked", {
-      sessionId: id,
-      contractId: existing.contractId,
-      network: existing.network,
+      sessionRef: sessionRef(target.id),
+      contractId: target.contractId,
+      network: target.network,
     });
     return reply.code(204).send();
   });

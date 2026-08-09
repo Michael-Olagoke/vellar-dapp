@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import type { Network } from "@vellar/types";
 import {
   DuplicateWalletError,
@@ -67,23 +67,47 @@ export function createPgSessionRepository(db: Db): SessionRepository {
         network: record.network,
         createdAt: new Date(record.createdAt),
         lastActiveAt: new Date(record.lastActiveAt),
+        expiresAt: new Date(record.expiresAt),
       });
     },
 
-    async find(id) {
-      const rows = await db.select().from(walletSessions).where(eq(walletSessions.id, id)).limit(1);
+    async find(id, asOf = new Date()) {
+      // Expired rows are ABSENT: filter on expiresAt in the query, so an expired
+      // id is indistinguishable from a missing one (no "was once valid" signal).
+      const rows = await db
+        .select()
+        .from(walletSessions)
+        .where(and(eq(walletSessions.id, id), gt(walletSessions.expiresAt, asOf)))
+        .limit(1);
       const row = rows[0];
       if (!row) return undefined;
       return toSessionRecord(row);
     },
 
-    async listByContract(contractId, network) {
+    async listByContract(contractId, network, asOf = new Date()) {
       const rows = await db
         .select()
         .from(walletSessions)
-        .where(and(eq(walletSessions.contractId, contractId), eq(walletSessions.network, network)))
+        .where(
+          and(
+            eq(walletSessions.contractId, contractId),
+            eq(walletSessions.network, network),
+            gt(walletSessions.expiresAt, asOf),
+          ),
+        )
         .orderBy(desc(walletSessions.lastActiveAt));
       return rows.map(toSessionRecord);
+    },
+
+    async touch(id, at, newExpiresAt) {
+      // Only a currently-live row slides forward — a rejected/expired id (past
+      // expiresAt) matches nothing and cannot extend its own life.
+      const updated = await db
+        .update(walletSessions)
+        .set({ lastActiveAt: at, expiresAt: newExpiresAt })
+        .where(and(eq(walletSessions.id, id), gt(walletSessions.expiresAt, at)))
+        .returning({ id: walletSessions.id });
+      return updated.length > 0;
     },
 
     async delete(id) {
@@ -103,6 +127,7 @@ function toSessionRecord(row: typeof walletSessions.$inferSelect) {
     network: row.network as Network,
     createdAt: row.createdAt.toISOString(),
     lastActiveAt: row.lastActiveAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
   };
 }
 

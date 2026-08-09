@@ -47,26 +47,20 @@ interface CleanupOp {
   action: string;
 }
 
-/** Collects every cleanup operation in dependency order (transfer before
- * trustline removal), each paired with its description. */
+/** Collects every cleanup operation in DEPENDENCY order (RA-5), each paired with
+ * its description. The order matters for on-chain success:
+ *   1. cancel offers  — an open sell offer locks the offered amount as a SELLING
+ *      LIABILITY, so it is not spendable. Cancelling first frees it; otherwise a
+ *      payment of the full balance below hits op_underfunded (only balance minus
+ *      liabilities is movable) and the whole tx fails.
+ *   2. pay out balances then remove each trustline — transfer before its removal.
+ *   3. delete data entries.
+ */
 function collectCleanupOps(account: HorizonAccount, destination: string): CleanupOp[] {
   const out: CleanupOp[] = [];
 
-  for (const balance of account.balances) {
-    if (balance.assetType === "native") continue;
-    const asset = toAsset(balance.assetCode, balance.assetIssuer);
-    if (Number(balance.balance) > 0) {
-      out.push({
-        op: Operation.payment({ destination, asset, amount: balance.balance }),
-        action: `send ${balance.balance} ${asset.getCode()} to the destination`,
-      });
-    }
-    out.push({
-      op: Operation.changeTrust({ asset, limit: "0" }),
-      action: `remove the ${asset.getCode()} trustline`,
-    });
-  }
-
+  // 1. Cancel offers first — frees selling liabilities so the payments below can
+  //    move the full asset balance.
   for (const offer of account.offers) {
     out.push({
       op: Operation.manageSellOffer({
@@ -86,6 +80,23 @@ function collectCleanupOps(account: HorizonAccount, destination: string): Cleanu
     });
   }
 
+  // 2. Pay out each non-native balance, then remove its trustline.
+  for (const balance of account.balances) {
+    if (balance.assetType === "native") continue;
+    const asset = toAsset(balance.assetCode, balance.assetIssuer);
+    if (Number(balance.balance) > 0) {
+      out.push({
+        op: Operation.payment({ destination, asset, amount: balance.balance }),
+        action: `send ${balance.balance} ${asset.getCode()} to the destination`,
+      });
+    }
+    out.push({
+      op: Operation.changeTrust({ asset, limit: "0" }),
+      action: `remove the ${asset.getCode()} trustline`,
+    });
+  }
+
+  // 3. Delete data entries.
   for (const key of account.dataKeys) {
     out.push({
       op: Operation.manageData({ name: key, value: null }),

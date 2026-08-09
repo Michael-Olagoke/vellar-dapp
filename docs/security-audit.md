@@ -147,6 +147,19 @@ read oracle. Same build-box gating as H2.
   session read/revoke with the caller's own opaque session id as a bearer capability; stop
   letting a bare public contractId enumerate ids.
 
+  > **Status (M1/RA-3): CLOSED.** The session routes are now gated on a bearer session capability
+  > (`Authorization: Bearer <sessionId>`), and — importantly — **the premise this finding was rated
+  > on has changed:** a session id is no longer "not an access token." It is now a **narrow bearer
+  > capability** for the session routes (list / read / revoke), scoped to the account it is bound to,
+  > with a 7-day sliding expiry (matching the device signer; expired == absent). It authorizes ONLY
+  > those routes — a non-drift test asserts a valid session id grants nothing on `/wallet/submit` or
+  > `/wallet/create` — so it does not become the app-layer auth the design omits. The reasoning that
+  > depended on "sessions gate no authority" is superseded (see the architecture-analysis update);
+  > the impact-if-leaked is now bounded by expiry and by the capability's narrow scope, and the id no
+  > longer appears in a logged URL (routes moved the id to the header/body) or in the audit log (a
+  > truncated `sha256` ref is stored, never the raw id). Enumeration/mass-revoke are closed:
+  > listing/revoke require a live capability for that exact account.
+
 - **M2 — deploy-instance has no spend cap of its own `[my code]`** — `policy-service/src/server.ts:156`.
   Sole caller-side throttle is the ineffective gateway per-IP limit; distributed callers drain
   faster than 120/min implies. **Fix:** global/per-sponsor deploy budget in policy-service.
@@ -474,7 +487,7 @@ read oracle. Same build-box gating as H2.
 4. **M4** — gate `verified_only` out of the mainnet policy builder until a mainnet registry
    exists (see V3 re-rating).
 
-**Before public testnet exposure (a real build box / public submit endpoint):** 5. **H2 + H3** — repoUrl allowlist + private build logs. 6. **M1** — authorize session read/revoke with the caller's own session id. 7. **M6** — fail-closed boot + DB-aware health. 8. **M8** — bump fast-uri.
+**Before public testnet exposure (a real build box / public submit endpoint):** 5. **H2 + H3** — repoUrl allowlist + private build logs. 6. **M1** — ~~authorize session read/revoke with the caller's own session id~~ **DONE** (RA-3/M1: bearer session capability, 7-day sliding expiry, hashed audit ref). 7. **M6** — fail-closed boot + DB-aware health. 8. **M8** — bump fast-uri.
 
 **Can wait (hardening / latent):** M3, M7, M9, L1–L7, I1.
 
@@ -687,9 +700,31 @@ never implemented. Impact is bounded — sessions gate **no** on-chain authority
 on-chain via `__check_auth`; web connected-state derives from SDK localStorage) — so this is device-
 management DoS + session-graph disclosure, **not** an authz bypass.
 
-> **Status (RA-3): OPEN.** "Open finding with doc text implying otherwise" is the worst of both.
-> Implement the bearer-capability ownership guard on both routes and add a 401/403 test for a
-> non-owning caller; keep the impact note accurate (no on-chain authority).
+> **Status (RA-3): CLOSED (branch `security/session-capability`).** Implemented as a bearer session
+> capability, and the finding's own premise ("sessions gate no authority") was updated everywhere it
+> was reasoned from, not just where it was stated:
+>
+> - **Guard.** `GET /wallet/sessions`, the new `GET /wallet/session` (own session), and the new
+>   `POST /wallet/sessions/revoke` all require `Authorization: Bearer <sessionId>` resolving to a
+>   **live** session **bound to the exact account** being read/revoked. Missing / unknown / expired /
+>   wrong-account bearer all return an identical `401 unauthorized`, so no response reveals whether an
+>   id was ever valid. Enumeration and cross-account mass-revoke are closed.
+> - **Expiry.** Sessions now carry `expires_at` (schema migration `0002`) and expire on a **7-day
+>   sliding window** matching the device signer (`SESSION_TTL_MS`; noted in-code that the two
+>   lifetimes are coupled). `find`/`listByContract` treat an expired row as **absent**; `touch` slides
+>   `lastActiveAt`+`expiresAt` only on an authorized use, so a rejected/expired id cannot extend its
+>   own life. This fixes the pre-existing never-updated `lastActiveAt` (it was harmless for a label,
+>   not for a capability).
+> - **No credential in logs.** The id moved out of the URL (path/query) into the header/body —
+>   Fastify logs URLs but not headers/bodies — and the audit log stores a **truncated `sha256(id)`**
+>   ref, never the raw id.
+> - **No auth drift.** A non-drift test asserts a valid session id on `Authorization` grants nothing
+>   on `/wallet/submit` or `/wallet/create` (they still validate their own bodies) — the capability
+>   stays narrow and does not become the app-layer auth the design deliberately omits.
+> - **Premise sweep.** The "not an access token / gates no authority" reasoning in
+>   `docs/architecture-analysis.md` (the "What passes for a session" + "Where authorization is real"
+>   passages) and in the M1 finding above was corrected — a conclusion built on the old premise, not
+>   just the sentence, so a later reader doesn't re-derive the stale rating.
 
 ### RA-4 — `ALLOW_INMEMORY` fail-closed boot guard is **inert** on the deploy targets 🟡 Medium `[my code]`
 
@@ -773,8 +808,17 @@ real account state, and the wizard surfaces a raw `op_underfunded`. No fund loss
 and the `/lifecycle/merge` preflight re-inspects live state (409 while blockers remain), so no
 irreversible merge on partial cleanup — a liveness/correctness bug, not a safety one. Untested.
 
-> **Status (RA-5): OPEN.** Cancel offers before payments (or subtract `selling_liabilities` from the
-> paid amount); parse `selling_liabilities` in `horizon.ts`; add a balance-plus-same-asset-offer test.
+> **Status (RA-5): CLOSED.** `collectCleanupOps` now emits **offer cancels first**, then balance
+> payouts + trustline removals, then data deletes (`builder.ts`). Cancelling first frees the selling
+> liabilities, so by the time each payment runs (ops execute sequentially within the tx) the full
+> asset balance is spendable — no `op_underfunded`. Chosen over parsing `selling_liabilities` and
+> subtracting it from the paid amount: reordering makes the tx correct by construction (the liability
+> is gone before the payment), whereas subtracting would leave the liability-locked remainder stranded
+> on the account and still block the trustline removal — so parsing `selling_liabilities` was
+> considered and deliberately not needed. Tests (`builder.test.ts`, `server.test.ts`): an account
+> holding an asset it also sells on an open offer emits the cancel before the payment (asserted every
+> `manageSellOffer` precedes every `payment`), and the end-to-end op order is now
+> `manageSellOffer → payment → changeTrust → manageData`.
 
 ### RA-6 — V3 detach invariant is pinned only at the pure helper; the attach/detach wiring is untested 🟡 Medium `[my code]`
 
@@ -790,9 +834,17 @@ another key's `SignerLimits` map, as the verified-recipient doc-comment contempl
 **green** and re-introduce the V3 permanent-fund-lock (a reject-everything policy could then block its
 own removal). No live bypass today; a test-coverage gap on a fund-lock-critical invariant.
 
-> **Status (RA-6): OPEN.** Add an integration test that drives the real `connector-factory` attach
-> and asserts the emitted signer is standalone `SignerLimits(None)`, and a detach test through the
-> real `kit.remove` path — so the shape breaks a test if a refactor changes it.
+> **Status (RA-6): CLOSED.** The attach/detach wiring is extracted from `connector-factory.ts` into
+> `createPolicySignerActions` (`apps/web/lib/policy-signer.ts`) and unit-tested with a fake kit at the
+> WIRING layer, not just at the pure `policyAttachArgs`. The tests assert what the kit is actually
+> called with: `attachPolicy` calls `kit.addPolicy(id, limits, store, expiration)` with
+> **`limits === undefined`** (standalone `SignerLimits(None)` — the shape that triggers the wallet's
+> `is_sole_self_removal` exception), `store = Persistent`, no expiration; `detachPolicy` calls
+> `kit.remove(SignerKey.Policy(id))` (the exact key the recovery exception recognizes). Crucially,
+> `connector-factory` now **delegates to that same `createPolicySignerActions`**, so the production
+> path is the tested path — the refactor the finding feared (inlining a `SignerLimits` map to make the
+> policy a required co-signer) would now break these tests instead of shipping green. The browser-only
+> `SignerKey`/`SignerStore` enums are injected, keeping the action module SSR/test-safe.
 
 ### RA-7 — `isBlockedAddress` misses hex-form IPv4-mapped + NAT64 IPv6 ℹ️ Info `[my code]`
 
