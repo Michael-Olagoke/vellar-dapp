@@ -808,8 +808,17 @@ real account state, and the wizard surfaces a raw `op_underfunded`. No fund loss
 and the `/lifecycle/merge` preflight re-inspects live state (409 while blockers remain), so no
 irreversible merge on partial cleanup — a liveness/correctness bug, not a safety one. Untested.
 
-> **Status (RA-5): OPEN.** Cancel offers before payments (or subtract `selling_liabilities` from the
-> paid amount); parse `selling_liabilities` in `horizon.ts`; add a balance-plus-same-asset-offer test.
+> **Status (RA-5): CLOSED.** `collectCleanupOps` now emits **offer cancels first**, then balance
+> payouts + trustline removals, then data deletes (`builder.ts`). Cancelling first frees the selling
+> liabilities, so by the time each payment runs (ops execute sequentially within the tx) the full
+> asset balance is spendable — no `op_underfunded`. Chosen over parsing `selling_liabilities` and
+> subtracting it from the paid amount: reordering makes the tx correct by construction (the liability
+> is gone before the payment), whereas subtracting would leave the liability-locked remainder stranded
+> on the account and still block the trustline removal — so parsing `selling_liabilities` was
+> considered and deliberately not needed. Tests (`builder.test.ts`, `server.test.ts`): an account
+> holding an asset it also sells on an open offer emits the cancel before the payment (asserted every
+> `manageSellOffer` precedes every `payment`), and the end-to-end op order is now
+> `manageSellOffer → payment → changeTrust → manageData`.
 
 ### RA-6 — V3 detach invariant is pinned only at the pure helper; the attach/detach wiring is untested 🟡 Medium `[my code]`
 
