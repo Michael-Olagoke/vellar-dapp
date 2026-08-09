@@ -834,9 +834,17 @@ another key's `SignerLimits` map, as the verified-recipient doc-comment contempl
 **green** and re-introduce the V3 permanent-fund-lock (a reject-everything policy could then block its
 own removal). No live bypass today; a test-coverage gap on a fund-lock-critical invariant.
 
-> **Status (RA-6): OPEN.** Add an integration test that drives the real `connector-factory` attach
-> and asserts the emitted signer is standalone `SignerLimits(None)`, and a detach test through the
-> real `kit.remove` path — so the shape breaks a test if a refactor changes it.
+> **Status (RA-6): CLOSED.** The attach/detach wiring is extracted from `connector-factory.ts` into
+> `createPolicySignerActions` (`apps/web/lib/policy-signer.ts`) and unit-tested with a fake kit at the
+> WIRING layer, not just at the pure `policyAttachArgs`. The tests assert what the kit is actually
+> called with: `attachPolicy` calls `kit.addPolicy(id, limits, store, expiration)` with
+> **`limits === undefined`** (standalone `SignerLimits(None)` — the shape that triggers the wallet's
+> `is_sole_self_removal` exception), `store = Persistent`, no expiration; `detachPolicy` calls
+> `kit.remove(SignerKey.Policy(id))` (the exact key the recovery exception recognizes). Crucially,
+> `connector-factory` now **delegates to that same `createPolicySignerActions`**, so the production
+> path is the tested path — the refactor the finding feared (inlining a `SignerLimits` map to make the
+> policy a required co-signer) would now break these tests instead of shipping green. The browser-only
+> `SignerKey`/`SignerStore` enums are injected, keeping the action module SSR/test-safe.
 
 ### RA-7 — `isBlockedAddress` misses hex-form IPv4-mapped + NAT64 IPv6 ℹ️ Info `[my code]`
 

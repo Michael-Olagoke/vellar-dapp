@@ -9,7 +9,7 @@ import {
 } from "vellar-sdk";
 import { walletConfig } from "./config";
 import { createHttpWalletBackend } from "./http-backend";
-import { policyAttachArgs } from "./policy-signer";
+import { createPolicySignerActions } from "./policy-signer";
 
 // Builds the real PasskeyKit-backed wallet runtime. The connector and the
 // payment client MUST share one PasskeyKit instance — the connected passkey's
@@ -113,37 +113,34 @@ export function getWalletRuntime(): Promise<WalletRuntime> {
         });
         return { hash, expiresAt: new Date(expirationSeconds * 1000).toISOString() };
       },
+      // Policy attach/detach is wired through createPolicySignerActions
+      // (policy-signer.ts) so the standalone-signer + recovery-key invariants
+      // are unit-tested at the WIRING layer (RA-6), not just at the pure
+      // policyAttachArgs. The browser-only passkey-kit enums are injected.
       async attachPolicy(policyContractId) {
-        const { SignerStore } = await import("passkey-kit");
-        // Standalone policy signer (SignerLimits = None) — see policy-signer.ts
-        // and security-audit.md V3: this is what lets the admin passkey detach a
-        // rejecting policy without its consent. policyAttachArgs pins the shape.
-        const args = policyAttachArgs(policyContractId);
-        const store = args.store === "Persistent" ? SignerStore.Persistent : SignerStore.Temporary;
-        const tx = await kit.addPolicy(args.policyContractId, args.limits, store, args.expiration);
-        const signed = (await kit.sign(tx)) ?? tx;
-        const { hash } = await backend.submitTransaction({
-          signedXdr: typeof signed === "string" ? signed : (signed as { toXDR(): string }).toXDR(),
-          network: config.network,
-        });
-        return { hash };
+        const { SignerKey, SignerStore } = await import("passkey-kit");
+        return policySignerActions({ SignerKey, SignerStore }).attachPolicy(policyContractId);
       },
       async detachPolicy(policyContractId) {
-        // Recovery path (security-audit.md V3 / FIX 5): the admin passkey removes
-        // the policy signer WITHOUT the policy's consent — the wallet's
-        // is_sole_self_removal exception skips a rejecting policy for its own
-        // removal, so this un-bricks a wallet stuck behind a reject-everything
-        // policy (e.g. verified_only with no live attestation).
-        const { SignerKey } = await import("passkey-kit");
-        const tx = await kit.remove(SignerKey.Policy(policyContractId));
-        const signed = (await kit.sign(tx)) ?? tx;
-        const { hash } = await backend.submitTransaction({
-          signedXdr: typeof signed === "string" ? signed : (signed as { toXDR(): string }).toXDR(),
-          network: config.network,
-        });
-        return { hash };
+        const { SignerKey, SignerStore } = await import("passkey-kit");
+        return policySignerActions({ SignerKey, SignerStore }).detachPolicy(policyContractId);
       },
     };
+
+    /** Bind the extracted actions to this runtime's kit + backend + network,
+     * given the lazily-imported passkey-kit enums. */
+    function policySignerActions(enums: {
+      SignerKey: { Policy(id: string): unknown };
+      SignerStore: { Persistent: unknown; Temporary: unknown };
+    }) {
+      return createPolicySignerActions({
+        kit: kit as unknown as Parameters<typeof createPolicySignerActions>[0]["kit"],
+        backend,
+        network: config.network,
+        SignerKey: enums.SignerKey,
+        SignerStore: enums.SignerStore,
+      });
+    }
   })();
   return runtimePromise;
 }

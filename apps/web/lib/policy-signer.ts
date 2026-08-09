@@ -38,3 +38,73 @@ export function policyAttachArgs(policyContractId: string): PolicyAttachArgs {
     expiration: undefined,
   };
 }
+
+// --- Attach/detach WIRING (RA-6) --------------------------------------------
+//
+// The invariant above (standalone SignerLimits(None) → detachable) was pinned
+// only at the pure helper; the code that actually calls kit.addPolicy/kit.remove
+// lived inline in connector-factory and was untested — so a refactor inlining a
+// SignerLimits map would ship green. The attach/detach flow is extracted here so
+// the wiring is unit-tested with a fake kit: attach MUST pass limits===undefined,
+// and detach MUST remove exactly SignerKey.Policy(id) (the key the wallet's
+// is_sole_self_removal exception recognizes). The passkey-kit enums are injected
+// (they touch browser APIs) so this module stays SSR/test-safe.
+
+/** Minimal structural view of the passkey-kit surface the actions use. */
+export interface PolicySignerKit {
+  addPolicy(
+    policyContractId: string,
+    limits: undefined,
+    store: unknown,
+    expiration: undefined,
+  ): Promise<unknown>;
+  remove(signerKey: unknown): Promise<unknown>;
+  sign(tx: unknown): Promise<unknown>;
+}
+
+export interface PolicySignerBackend {
+  submitTransaction(req: { signedXdr: string; network: string }): Promise<{ hash: string }>;
+}
+
+export interface PolicySignerDeps {
+  kit: PolicySignerKit;
+  backend: PolicySignerBackend;
+  network: string;
+  /** passkey-kit SignerKey (SignerKey.Policy) — injected (browser-only). */
+  SignerKey: { Policy(id: string): unknown };
+  /** passkey-kit SignerStore enum — injected (browser-only). */
+  SignerStore: { Persistent: unknown; Temporary: unknown };
+}
+
+function toXdr(signed: unknown, fallback: unknown): string {
+  const value = signed ?? fallback;
+  return typeof value === "string" ? value : (value as { toXDR(): string }).toXDR();
+}
+
+/** The policy attach/detach actions, wired to a kit + backend. Extracted from
+ * connector-factory so the standalone-signer + recovery-key invariants are
+ * tested at the WIRING layer (RA-6), not just at policyAttachArgs. */
+export function createPolicySignerActions(deps: PolicySignerDeps) {
+  const { kit, backend, network, SignerKey, SignerStore } = deps;
+  return {
+    async attachPolicy(policyContractId: string): Promise<{ hash: string }> {
+      // Standalone policy signer (SignerLimits = None) — policyAttachArgs pins
+      // the shape; passing limits here would make it a required co-signer and
+      // risk an unremovable rejecting policy (V3).
+      const args = policyAttachArgs(policyContractId);
+      const store = args.store === "Persistent" ? SignerStore.Persistent : SignerStore.Temporary;
+      const tx = await kit.addPolicy(args.policyContractId, args.limits, store, args.expiration);
+      const signed = await kit.sign(tx);
+      return backend.submitTransaction({ signedXdr: toXdr(signed, tx), network });
+    },
+
+    async detachPolicy(policyContractId: string): Promise<{ hash: string }> {
+      // Recovery path (V3 / FIX 5): remove the policy signer WITHOUT the policy's
+      // consent. Must target SignerKey.Policy so the wallet's
+      // is_sole_self_removal exception applies.
+      const tx = await kit.remove(SignerKey.Policy(policyContractId));
+      const signed = await kit.sign(tx);
+      return backend.submitTransaction({ signedXdr: toXdr(signed, tx), network });
+    },
+  };
+}
