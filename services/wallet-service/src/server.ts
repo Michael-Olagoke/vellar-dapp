@@ -7,6 +7,7 @@ import {
   domainMetrics,
   recordOutcome,
   type SpendBudget,
+  type BudgetNetwork,
 } from "@vellar/service-kit";
 import {
   createMemoryAuditLog,
@@ -95,6 +96,12 @@ export interface WalletServiceDeps {
    * returns 503. Unset = budgeting disabled (dev / no relayer). The sponsor
    * line is metered inside the submitter, where the fee is known. */
   budget?: SpendBudget;
+  /** Network label for the create budget ledger line — from SERVER CONFIG
+   * (resolveNetwork), NEVER the request body's network field (security-audit
+   * V5/RA-3). Required alongside `budget`; without it the create route cannot
+   * meter (fails closed). Metering on the body would let a caller split spend
+   * across the testnet/mainnet partitions and double the effective ceiling. */
+  budgetNetwork?: BudgetNetwork;
 }
 
 export function buildServer(deps: WalletServiceDeps): FastifyInstance {
@@ -180,7 +187,16 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
     if (deps.budget) {
       let allowed: boolean;
       try {
-        const r = await deps.budget.tryConsume({ line: "create", network, stroops: 0n });
+        // Meter on the SERVER-CONFIG network (V5/RA-3), never the request body:
+        // a body-keyed line would let a caller split spend across the
+        // testnet/mainnet partitions and double the effective ceiling. Fail
+        // closed if budgetNetwork wasn't wired alongside the budget.
+        if (!deps.budgetNetwork) throw new Error("budget configured without budgetNetwork");
+        const r = await deps.budget.tryConsume({
+          line: "create",
+          network: deps.budgetNetwork,
+          stroops: 0n,
+        });
         allowed = r.ok;
       } catch (err) {
         request.log.error(err, "create budget accounting failed; refusing");

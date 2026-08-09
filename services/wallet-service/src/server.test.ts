@@ -310,6 +310,7 @@ describe("POST /wallet/create budget line (FIX 3)", () => {
     app = buildServer({
       submitter: workingSubmitter(),
       networkPassphrase: PASSPHRASE,
+      budgetNetwork: "testnet",
       budget: { tryConsume },
     });
     const res = await app.inject({
@@ -319,6 +320,30 @@ describe("POST /wallet/create budget line (FIX 3)", () => {
     });
     expect(res.statusCode).toBe(201);
     expect(tryConsume).toHaveBeenCalledWith({ line: "create", network: "testnet", stroops: 0n });
+  });
+
+  it("meters the create budget on SERVER CONFIG network, never the request body (V5)", async () => {
+    // The RA-3-class defect: create metered on parsed.data.network (the body), so
+    // an attacker could POST network:"testnet" against a mainnet server and hit
+    // the idle testnet budget partition — splitting spend across two ceilings.
+    // Metering MUST key off deps.budgetNetwork (config), ignoring the body.
+    const derived = deriveWalletContractId(KEY_ID, { networkPassphrase: PASSPHRASE });
+    const tryConsume = vi.fn().mockResolvedValue({ ok: true });
+    app = buildServer({
+      submitter: workingSubmitter(),
+      networkPassphrase: PASSPHRASE,
+      budgetNetwork: "mainnet", // server is on mainnet…
+      budget: { tryConsume },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/wallet/create",
+      // …but the body claims testnet.
+      payload: { keyId: KEY_ID, contractId: derived, network: "testnet", signedTx: "xdr" },
+    });
+    expect(res.statusCode).toBe(201);
+    // Metering hit the CONFIG partition (mainnet), not the body (testnet).
+    expect(tryConsume).toHaveBeenCalledWith({ line: "create", network: "mainnet", stroops: 0n });
   });
 
   it("returns 503 (create_budget_exceeded) and does NOT submit when the budget refuses", async () => {
