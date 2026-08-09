@@ -20,8 +20,18 @@ export default function Settings() {
   const session = useWalletSession();
   const actions = useWalletActions();
 
-  const sessions = useSessions(session?.accountId, session?.network ?? "testnet");
-  const revoke = useRevokeSession(session?.accountId, session?.network ?? "testnet");
+  // The caller's own session id is the M1 bearer capability for the list/revoke
+  // routes (RA-3) — thread it through so the device list loads and revokes apply.
+  const sessions = useSessions(
+    session?.accountId,
+    session?.network ?? "testnet",
+    session?.serverSessionId,
+  );
+  const revoke = useRevokeSession(
+    session?.accountId,
+    session?.network ?? "testnet",
+    session?.serverSessionId,
+  );
 
   async function revokeSession(id: string) {
     await revoke.mutateAsync(id);

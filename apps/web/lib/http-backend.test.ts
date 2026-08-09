@@ -127,54 +127,129 @@ describe("submitTransaction", () => {
   });
 });
 
-describe("listSessions", () => {
-  it("GETs sessions with the account and network in the query", async () => {
-    const record = {
-      id: "s1",
-      contractId: "C1",
+// SEAM-CROSSING integration tests (security-audit.md RA-3 / seam-drift lesson):
+// the real http-backend client driven against the REAL wallet-service buildServer
+// — NOT a mocked fetch. Mocked-fetch client tests can only assert that the client
+// does what the client does; they cannot catch a server contract change (M1
+// renamed the session routes and added a required bearer, and the old
+// mocked-fetch tests happily pinned the client calling the REMOVED route and
+// swallowing the resulting 404 as success). Any route the client calls is
+// exercised here against the actual server so the two sides must AGREE.
+describe("session client ↔ server seam (real buildServer)", () => {
+  // Adapt Fastify's inject() to a fetch-shaped function the client can call.
+  async function seamBackend() {
+    const { buildServer } = await import("@vellar/wallet-service/server");
+    const app = buildServer({
+      submitter: { submit: async () => ({ hash: "txhash" }) },
+    });
+    await app.ready();
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      const u = new URL(url);
+      const res = await app.inject({
+        method: (init?.method ?? "GET") as "GET" | "POST",
+        url: u.pathname + u.search,
+        headers: (init?.headers as Record<string, string>) ?? {},
+        payload: init?.body ? (init.body as string) : undefined,
+      });
+      // 204/205/304 must have a null body per the Fetch spec.
+      const nullBody = res.statusCode === 204 || res.statusCode === 205 || res.statusCode === 304;
+      return new Response(nullBody ? null : res.body, {
+        status: res.statusCode,
+        headers: { "content-type": (res.headers["content-type"] as string) ?? "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const client = createHttpWalletBackend("http://seam.test", fetchImpl);
+    return { app, client };
+  }
+
+  /** Create a wallet+session via the real client and return the caller's own
+   * session id (the M1 bearer). */
+  async function openSession(client: ReturnType<typeof createHttpWalletBackend>) {
+    const { sessionId } = await client.submitWalletCreation({
+      keyId: "key-seam",
+      contractId: "CSEAM",
       network: "testnet",
-      createdAt: "2026-07-16T10:00:00.000Z",
-      lastActiveAt: "2026-07-16T10:00:00.000Z",
-    };
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { sessions: [record] }));
-    const backend = createHttpWalletBackend("http://api.test", fetchImpl);
-
-    await expect(backend.listSessions({ contractId: "C1", network: "testnet" })).resolves.toEqual({
-      sessions: [record],
+      signedTx: "signed-deploy-xdr",
     });
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "http://api.test/wallet/sessions?contractId=C1&network=testnet",
-    );
+    return sessionId;
+  }
+
+  it("listSessions: the client sends the bearer the server requires (would 401 without it)", async () => {
+    const { app, client } = await seamBackend();
+    try {
+      const bearer = await openSession(client);
+      const { sessions } = await client.listSessions({
+        contractId: "CSEAM",
+        network: "testnet",
+        bearerSessionId: bearer,
+      });
+      expect(sessions.map((s) => s.id)).toContain(bearer);
+    } finally {
+      await app.close();
+    }
   });
 
-  it("throws on failure", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(500, { error: "boom" }));
-    const backend = createHttpWalletBackend("http://api.test", fetchImpl);
-    await expect(
-      backend.listSessions({ contractId: "C1", network: "testnet" }),
-    ).rejects.toBeInstanceOf(WalletApiError);
-  });
-});
-
-describe("revokeSession", () => {
-  it("DELETEs the session", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    const backend = createHttpWalletBackend("http://api.test", fetchImpl);
-    await backend.revokeSession("sess-1");
-    expect(fetchImpl).toHaveBeenCalledWith("http://api.test/wallet/session/sess-1", {
-      method: "DELETE",
-    });
+  it("listSessions WITHOUT a bearer is rejected by the real server (seam would hide this with a mock)", async () => {
+    const { app, client } = await seamBackend();
+    try {
+      await openSession(client);
+      // Call the client's list with an empty bearer — the real server 401s.
+      await expect(
+        client.listSessions({ contractId: "CSEAM", network: "testnet", bearerSessionId: "" }),
+      ).rejects.toMatchObject({ status: 401 });
+    } finally {
+      await app.close();
+    }
   });
 
-  it("treats an already-revoked session (404) as success", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(404, { error: "session_not_found" }));
-    const backend = createHttpWalletBackend("http://api.test", fetchImpl);
-    await expect(backend.revokeSession("gone")).resolves.toBeUndefined();
+  it("revokeSession: hits the REAL /wallet/sessions/revoke route and actually revokes (not a silent no-op)", async () => {
+    const { app, client } = await seamBackend();
+    try {
+      // Two sessions on the same account; revoke the second using the first's bearer.
+      const bearer = await openSession(client);
+      const connect = await client.lookupContractId({ keyId: "key-seam", network: "testnet" });
+      const target = (connect as { sessionId: string }).sessionId;
+
+      await client.revokeSession({ bearerSessionId: bearer, targetSessionId: target });
+
+      // The revoked session is GONE — presenting it as a bearer now 401s.
+      await expect(
+        client.listSessions({ contractId: "CSEAM", network: "testnet", bearerSessionId: target }),
+      ).rejects.toMatchObject({ status: 401 });
+      // The caller's own session still works.
+      const { sessions } = await client.listSessions({
+        contractId: "CSEAM",
+        network: "testnet",
+        bearerSessionId: bearer,
+      });
+      expect(sessions.map((s) => s.id)).not.toContain(target);
+    } finally {
+      await app.close();
+    }
   });
 
-  it("throws on server failures", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(500, { error: "boom" }));
-    const backend = createHttpWalletBackend("http://api.test", fetchImpl);
-    await expect(backend.revokeSession("s")).rejects.toBeInstanceOf(WalletApiError);
+  it("revokeSession THROWS on a non-existent target (no 404-swallowed-as-success)", async () => {
+    const { app, client } = await seamBackend();
+    try {
+      const bearer = await openSession(client);
+      // A bogus target on our own account → server 404 session_not_found → client MUST throw.
+      await expect(
+        client.revokeSession({ bearerSessionId: bearer, targetSessionId: "does-not-exist" }),
+      ).rejects.toMatchObject({ status: 404 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("revokeSession without a valid bearer is rejected (401), not silently accepted", async () => {
+    const { app, client } = await seamBackend();
+    try {
+      const bearer = await openSession(client);
+      await expect(
+        client.revokeSession({ bearerSessionId: "not-a-session", targetSessionId: bearer }),
+      ).rejects.toMatchObject({ status: 401 });
+    } finally {
+      await app.close();
+    }
   });
 });
