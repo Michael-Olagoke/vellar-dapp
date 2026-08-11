@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  sac-sdk>@stellar/stellar-sdk: ^16.0.1
   axios@>=1.0.0 <1.18.0: '>=1.18.1'
   fast-uri@4: '>=4.1.2'
   fast-uri@3: '>=3.1.4'
@@ -1907,11 +1908,6 @@ packages:
   '@stellar/stellar-sdk@14.6.1':
     resolution: {integrity: sha512-A1rQWDLdUasXkMXnYSuhgep+3ZZzyuXJKdt5/KAIc0gkmSp906HTvUpbT4pu+bVr41tu0+J4Ugz9J4BQAGGytg==}
     engines: {node: '>=20.0.0'}
-    hasBin: true
-
-  '@stellar/stellar-sdk@16.0.0-rc.1':
-    resolution: {integrity: sha512-mkOQUsFgepFIxRFJLgjkLAkYQDBdNKgLpMM5yIWQcCUoXavb0gO1Dlw/hPqVg2KBKUKaXs2ljVLuB4x6bSWR0g==}
-    engines: {node: '>=22.0.0'}
     hasBin: true
 
   '@stellar/stellar-sdk@16.0.1':
@@ -5766,24 +5762,6 @@ snapshots:
       - debug
       - supports-color
 
-  '@stellar/stellar-sdk@16.0.0-rc.1':
-    dependencies:
-      '@noble/ed25519': 3.1.0
-      '@noble/hashes': 2.2.0
-      '@stellar/js-xdr': 4.0.0
-      axios: 1.18.1
-      base32.js: 0.1.0
-      bignumber.js: 11.1.5
-      buffer: 6.0.3
-      commander: 14.0.3
-      eventsource: 4.1.0
-      feaxios: 0.0.23
-      smol-toml: 1.7.0
-      uint8array-extras: 1.5.0
-    transitivePeerDependencies:
-      - debug
-      - supports-color
-
   '@stellar/stellar-sdk@16.0.1':
     dependencies:
       '@noble/ed25519': 3.1.0
@@ -8206,7 +8184,7 @@ snapshots:
 
   sac-sdk@0.4.3:
     dependencies:
-      '@stellar/stellar-sdk': 16.0.0-rc.1
+      '@stellar/stellar-sdk': 16.0.1
       buffer: 6.0.3
     transitivePeerDependencies:
       - debug
