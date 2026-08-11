@@ -13,6 +13,12 @@ minimumReleaseAgeExclude:
 # (Dependabot alerts, 2026-07). All same-major, backward-compatible patch/minor
 # bumps. Re-check + prune when the direct deps that pull these in are upgraded.
 overrides:
+  # sac-sdk 0.4.3 hard-pins stellar-sdk 16.0.0-rc.1, whose ESM build is broken
+  # (imports a `config` export that @stellar/js-xdr@4 doesn't provide) and
+  # crashes the backend at first import on Render. Force it onto the stable
+  # 16.0.1 every first-party package already uses; drop when sac-sdk ships a
+  # release depending on a stable SDK.
+  "sac-sdk>@stellar/stellar-sdk": "^16.0.1"
   axios@>=1.0.0 <1.18.0: ">=1.18.1"
   # Blanket fast-uri pins: the range-scoped keys didn't catch parents that pin
   # an exact 4.1.0/3.1.3, so force the whole 3.x and 4.x lines to the patch.
