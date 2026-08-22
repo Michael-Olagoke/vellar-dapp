@@ -1,0 +1,531 @@
+/* ============================================================
+   Vellar app UI — "paper & signals" at product density.
+   The app root carries className="lp lpa": .lp (landing.css) supplies
+   every token and primitive (lp-btn, lp-chips, lp-field, focus ring,
+   selection); .lpa adds the shell and product components below.
+
+   Same rules as the marketing system: white paper ground, forest ink,
+   zero border-radius with 45° cut corners (two-layer clip borders),
+   no elevation shadows, Cabinet Grotesk for numbers that matter,
+   0.2s ease for every state change. Light-only by design.
+
+   Security semantics on white (AA-checked):
+   - positive/verified text  --lpa-ok  #0d7a55 (4.6:1 on paper)
+   - negative/error text     --lpa-bad #c2372b (4.5:1 on paper)
+   Fills stay in the soft accent family (mint/sun/coral-soft).
+   ============================================================ */
+
+.lpa {
+  min-height: 100vh;
+  display: flex;
+  background: var(--lp-paper);
+  font-size: 0.9375rem;
+  --lpa-header-h: 84px;
+  --lpa-ok: #0d7a55;
+  --lpa-bad: #c2372b;
+
+  /* Transitional remap: legacy design-system variables pointed at lp
+     tokens so not-yet-migrated pages (policies/verify/cleanup/settings/
+     onboarding) stay legible on paper inside the new shell. Delete this
+     block when the last page migrates. */
+  --bg: var(--lp-paper);
+  --bg2: var(--lp-paper-tint);
+  --surface: var(--lp-paper);
+  --surface2: var(--lp-paper-tint);
+  --line: var(--lp-line);
+  --ink: var(--lp-ink);
+  --muted: var(--lp-ink-soft);
+  --muted2: var(--lp-ink-faint);
+  --signal: var(--lpa-ok);
+  --negative: var(--lpa-bad);
+  --chip: var(--lp-paper-tint);
+  --neo-bg: var(--lp-paper);
+  --neo-surface: var(--lp-paper);
+  --neo-light: transparent;
+  --neo-shadow: transparent;
+  --neo-raised: 0 0 0 1px var(--lp-line-strong);
+  --neo-raised-sm: 0 0 0 1px var(--lp-line-strong);
+  --neo-inset: inset 0 0 0 1px var(--lp-line);
+}
+
+/* App heading scale — product density, overrides the marketing scale
+   (same specificity; app.css is imported after landing.css) */
+.lpa h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.lpa h2 {
+  font-size: 1.25rem;
+  letter-spacing: -0.015em;
+}
+.lpa h3 {
+  font-size: 1.0625rem;
+}
+
+/* Standalone auth screen (onboarding — outside the shell) */
+.lpa-auth {
+  min-height: 100vh;
+  display: block;
+  background: var(--lp-paper);
+  padding: 48px var(--lp-gutter) 96px;
+}
+
+/* ---- Sidebar — detached floating panel ------------------------
+   A slim panel inset from the page edges with cut corners (top-right
+   and bottom-right), drawn with the two-layer clip border. Collapsible
+   to an icon rail via .lpa-collapsed on the root; becomes a bottom tab
+   bar on mobile. */
+
+.lpa {
+  --lpa-side-clip: polygon(
+    0 0,
+    calc(100% - 20px) 0,
+    100% 20px,
+    100% calc(100% - 20px),
+    calc(100% - 20px) 100%,
+    0 100%
+  );
+  --lpa-side-clip-in: polygon(
+    1px 1px,
+    calc(100% - 20.41px) 1px,
+    calc(100% - 1px) 20.41px,
+    calc(100% - 1px) calc(100% - 20.41px),
+    calc(100% - 20.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
+}
+
+.lpa-side {
+  position: sticky;
+  top: 12px;
+  align-self: flex-start;
+  height: calc(100vh - 24px);
+  width: 216px;
+  flex-shrink: 0;
+  margin: 12px 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 12px;
+  background: var(--lp-line-strong); /* the 1px border */
+  clip-path: var(--lpa-side-clip);
+  transition: width 0.25s var(--lp-ease-io);
+}
+.lpa-side::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--lp-paper);
+  clip-path: var(--lpa-side-clip-in);
+}
+
+/* Collapse toggle row (replaces the old logo slot) */
+.lpa-side-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.lpa-collapse {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: var(--lp-line-strong); /* the 1px border */
+  /* top-right cut — mirrors the panel corner it sits under */
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  color: var(--lp-ink);
+  cursor: pointer;
+}
+.lpa-collapse::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--lp-paper);
+  clip-path: polygon(
+    1px 1px,
+    calc(100% - 8.41px) 1px,
+    calc(100% - 1px) 8.41px,
+    calc(100% - 1px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
+  transition: background var(--lp-dur-fast) ease;
+}
+.lpa-collapse:hover::before {
+  background: var(--lp-paper-tint);
+}
+/* the clip would cut an outer focus ring — draw it inset */
+.lpa-collapse:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--lp-ink);
+}
+
+/* Collapsed: icon rail */
+.lpa-collapsed .lpa-side {
+  width: 62px;
+  padding: 14px 8px;
+}
+.lpa-collapsed .lpa-side-top {
+  justify-content: center;
+}
+.lpa-collapsed .lpa-navitem {
+  justify-content: center;
+  padding: 11px 0;
+}
+.lpa-collapsed .lpa-navitem > span {
+  display: none;
+}
+.lpa-navitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--lp-ink-soft);
+  text-decoration: none;
+  clip-path: var(--lp-clip-br-sm);
+  transition:
+    background var(--lp-dur-fast) ease,
+    color var(--lp-dur-fast) ease;
+}
+.lpa-navitem:hover:not(.active) {
+  background: var(--lp-paper-tint);
+  color: var(--lp-ink);
+}
+/* Active: mint fill inside a sharp ink border, cut corner included
+   (two-layer clip — the element paints the border, ::before the fill) */
+.lpa-navitem.active {
+  position: relative;
+  background: var(--lp-ink); /* the 1px border */
+  color: var(--lp-ink);
+}
+.lpa-navitem.active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--lp-mint-soft);
+  clip-path: polygon(
+    1px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 12.41px),
+    calc(100% - 12.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
+}
+/* clip-path would cut an outer ring — draw the focus ring inset */
+.lpa-navitem:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--lp-ink);
+}
+
+/* ---- Main column + top bar ------------------------------------ */
+
+.lpa-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lpa-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  height: var(--lpa-header-h);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--lp-line);
+}
+.lpa-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lpa-content {
+  flex: 1;
+  padding: 24px;
+}
+
+/* Address chip (mono, copies on click) */
+.lpa-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--lp-mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 8px 14px;
+  background: var(--lp-paper);
+  border: 1px solid var(--lp-line-strong);
+  border-radius: 0;
+  color: var(--lp-ink);
+  cursor: pointer;
+  transition: background var(--lp-dur-fast) ease;
+}
+.lpa-chip-btn:hover {
+  background: var(--lp-paper-tint);
+}
+.lpa-chip-btn:active {
+  translate: 0 1px;
+}
+.lpa-net {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lp-ink-faint);
+}
+
+/* ---- Panel — the app card ------------------------------------- */
+
+.lpa-panel {
+  position: relative;
+  background: var(--lp-line-strong); /* the 1px border */
+  clip-path: var(--lp-clip-br-md);
+  padding: 22px;
+}
+.lpa-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--lp-paper);
+  clip-path: var(--lp-clip-br-md-in1);
+}
+
+/* Panels that are buttons (template pickers etc.) */
+button.lpa-panel {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  transition: translate var(--lp-dur-fast) ease;
+}
+button.lpa-panel:hover:not(:disabled) {
+  translate: 0 -2px;
+}
+button.lpa-panel:active:not(:disabled) {
+  translate: 0 0;
+}
+button.lpa-panel:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Inset well (paper-tint field inside a panel) */
+.lpa-well {
+  background: var(--lp-paper-tint);
+  border: 1px solid var(--lp-line);
+  padding: 14px 16px;
+}
+
+/* Standalone input (outside .lpa-field) */
+.lpa-input {
+  background: var(--lp-paper);
+  border: 1px solid var(--lp-line-strong);
+  border-radius: 0;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--lp-ink);
+}
+.lpa-input::placeholder {
+  color: var(--lp-ink-faint);
+}
+
+/* ---- Numbers that matter -------------------------------------- */
+
+.lpa-balance {
+  font-family: var(--lp-display);
+  font-weight: 700;
+  font-size: 44px;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.lpa-balance .unit {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--lp-ink-faint);
+}
+.lpa-amt {
+  font-family: var(--lp-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* ---- Detail rows (dl) ----------------------------------------- */
+
+.lpa-detail {
+  display: flex;
+  flex-direction: column;
+}
+.lpa-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--lp-line);
+  font-size: 0.875rem;
+}
+.lpa-detail-row:last-child {
+  border-bottom: 0;
+}
+.lpa-detail-row dt {
+  color: var(--lp-ink-faint);
+}
+
+/* ---- Token rows (assets list) --------------------------------- */
+
+.lpa-tokrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--lp-line);
+}
+.lpa-tokrow:last-child {
+  border-bottom: 0;
+}
+.lpa-tokrow .ti {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  background: var(--lp-mint-soft);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+.lpa-tokrow:nth-child(2n) .ti {
+  background: var(--lp-sun-soft);
+}
+.lpa-tokrow .tn {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.lpa-tokrow .tn b {
+  font-size: 0.875rem;
+}
+.lpa-tokrow .tn span {
+  font-size: 0.75rem;
+  color: var(--lp-ink-faint);
+}
+.lpa-tokrow .tv {
+  margin-left: auto;
+}
+
+/* ---- Forms ---------------------------------------------------- */
+
+.lpa-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lpa-field .flabel {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lp-ink-faint);
+}
+.lpa-field input:not([type="radio"]):not([type="checkbox"]),
+.lpa-field select,
+.lpa-field textarea {
+  background: var(--lp-paper);
+  border: 1px solid var(--lp-line-strong);
+  border-radius: 0;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--lp-ink);
+}
+.lpa-field input::placeholder,
+.lpa-field textarea::placeholder {
+  color: var(--lp-ink-faint);
+}
+.lpa-field .ferror {
+  font-size: 0.8125rem;
+  color: var(--lpa-bad);
+}
+
+/* ---- Status text ---------------------------------------------- */
+
+.lpa-ok {
+  color: var(--lpa-ok);
+}
+.lpa-bad {
+  color: var(--lpa-bad);
+}
+
+/* ---- Empty state ---------------------------------------------- */
+
+.lpa-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--lp-ink-faint);
+  text-align: center;
+}
+.lpa-empty .ph {
+  width: 64px;
+  height: 64px;
+  background: var(--lp-mint-soft);
+  clip-path: var(--lp-clip-tl-md);
+}
+
+/* ---- Mobile: sidebar becomes a bottom tab bar ----------------- */
+
+@media (max-width: 760px) {
+  .lpa {
+    flex-direction: column;
+  }
+  .lpa-side,
+  .lpa-collapsed .lpa-side {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    gap: 0;
+    padding: 6px 10px;
+    clip-path: none;
+    background: var(--lp-paper);
+    border-top: 1px solid var(--lp-line);
+  }
+  .lpa-side::before {
+    display: none;
+  }
+  .lpa-side-top {
+    display: none;
+  }
+  .lpa-navitem,
+  .lpa-collapsed .lpa-navitem {
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    font-size: 0.6875rem;
+  }
+  .lpa-collapsed .lpa-navitem > span {
+    display: block;
+  }
+  .lpa-top {
+    height: auto;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+  .lpa-content {
+    padding: 16px 16px 96px;
+  }
+}

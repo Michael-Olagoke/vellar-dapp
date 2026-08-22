@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { WalletSession } from "@vellar/types";
 import { AppShell } from "@/components/app-shell";
+import { Eyebrow, LpActionButton } from "@/app/landing/ui";
 import {
   checkPairingStatus,
   getInjectedProvider,
@@ -13,8 +14,8 @@ import { walletErrorMessage } from "@/lib/messages";
 import { useRevokeSession, useSessions } from "@/lib/sessions";
 import { useWalletActions, useWalletSession } from "@/lib/wallet-context";
 
-// Account settings in the app shell (docs/decisions.md): session/device
-// management + extension pairing on neomorphic surfaces.
+// Account settings ("paper & signals" shell): session/device management +
+// extension pairing.
 
 export default function Settings() {
   const session = useWalletSession();
@@ -42,103 +43,64 @@ export default function Settings() {
 
   return (
     <AppShell>
-      <div
-        style={{
-          maxWidth: 720,
-          display: "flex",
-          flexDirection: "column",
-          gap: 22,
-        }}
-      >
-        <h1 style={{ fontSize: "clamp(1.8rem,4vw,2.4rem)" }}>Settings</h1>
+      <div className="flex max-w-[720px] flex-col gap-5">
+        <h1>Settings</h1>
 
         {session && <ExtensionPairingCard session={session} />}
 
-        <section className="neo" style={{ padding: 22 }}>
-          <span className="eyebrow">Devices &amp; sessions</span>
-          <p style={{ marginTop: 8, fontSize: 12, color: "var(--muted2)" }}>
+        <section className="lpa-panel">
+          <Eyebrow>Devices &amp; sessions</Eyebrow>
+          <p className="mt-2! text-xs text-[var(--lp-ink-faint)]">
             Sessions opened for this account. Revoking this device signs you out.
           </p>
 
           {sessions.isPending && (
-            <p
-              className="animate-pulse"
-              style={{ marginTop: 14, fontSize: 14, color: "var(--muted2)" }}
-            >
+            <p className="mt-3.5! animate-pulse text-sm text-[var(--lp-ink-faint)]">
               Loading sessions…
             </p>
           )}
 
           {sessions.isError && (
-            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12 }}>
-              <p role="alert" style={{ fontSize: 14, color: "var(--negative)" }}>
+            <div className="mt-3.5 flex items-center gap-3">
+              <p role="alert" className="lpa-bad text-sm">
                 Couldn&apos;t load sessions.
               </p>
-              <button onClick={() => void sessions.refetch()} className="btn btn-dark btn-sm">
+              <LpActionButton variant="outline" size="sm" onClick={() => void sessions.refetch()}>
                 Retry
-              </button>
+              </LpActionButton>
             </div>
           )}
 
           {sessions.data && (
-            <ul
-              style={{
-                listStyle: "none",
-                margin: "14px 0 0",
-                padding: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-              }}
-            >
+            <ul className="mt-3.5 flex list-none flex-col gap-2.5 p-0">
               {sessions.data.length === 0 && (
-                <li style={{ fontSize: 14, color: "var(--muted2)" }}>
-                  No active sessions recorded.
-                </li>
+                <li className="text-sm text-[var(--lp-ink-faint)]">No active sessions recorded.</li>
               )}
               {sessions.data.map((record) => {
                 const isCurrent = record.id === session?.serverSessionId;
                 return (
-                  <li
-                    key={record.id}
-                    className="neo-inset"
-                    style={{
-                      padding: "14px 16px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 16,
-                    }}
-                  >
-                    <div style={{ fontSize: 14 }}>
-                      <p style={{ color: "var(--muted)" }}>
+                  <li key={record.id} className="lpa-well flex items-center justify-between gap-4">
+                    <div className="text-sm">
+                      <p className="text-[var(--lp-ink-soft)]">
                         Session started {new Date(record.createdAt).toLocaleString()}
                         {isCurrent && (
-                          <span
-                            className="active-state"
-                            style={{
-                              marginLeft: 8,
-                              borderRadius: 999,
-                              padding: "2px 10px",
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                          >
+                          <span className="ml-2 bg-[var(--lp-mint-soft)] px-2.5 py-0.5 text-[11px] font-bold">
                             This device
                           </span>
                         )}
                       </p>
-                      <p style={{ fontSize: 12, color: "var(--muted2)" }}>
+                      <p className="text-xs text-[var(--lp-ink-faint)]">
                         Last active {new Date(record.lastActiveAt).toLocaleString()}
                       </p>
                     </div>
-                    <button
+                    <LpActionButton
+                      variant="outline"
+                      size="sm"
                       onClick={() => void revokeSession(record.id)}
                       disabled={revoke.isPending}
-                      className="btn btn-dark btn-sm"
                     >
                       {isCurrent ? "Revoke & sign out" : "Revoke"}
-                    </button>
+                    </LpActionButton>
                   </li>
                 );
               })}
@@ -186,60 +148,52 @@ function ExtensionPairingCard({ session }: { session: WalletSession }) {
   }
 
   return (
-    <section className="neo" style={{ padding: 22 }}>
-      <span className="eyebrow">Browser extension</span>
-      <p style={{ marginTop: 8, fontSize: 12, color: "var(--muted2)", lineHeight: 1.6 }}>
+    <section className="lpa-panel">
+      <Eyebrow>Browser extension</Eyebrow>
+      <p className="mt-2! text-xs leading-relaxed text-[var(--lp-ink-faint)]">
         Pair the Vellar extension as a device signer: it can approve dApp transactions for 7 days,
         then expires automatically. You approve the pairing in the extension, then confirm with your
         passkey.
       </p>
 
       {detected === false && (
-        <p style={{ marginTop: 14, fontSize: 14, color: "var(--muted2)" }}>
+        <p className="mt-3.5! text-sm text-[var(--lp-ink-faint)]">
           Extension not detected in this browser. Install it, then reload this page.
         </p>
       )}
 
       {detected &&
         (state.step === "idle" || state.step === "error" || state.step === "pairing") && (
-          <button
+          <LpActionButton
+            className="mt-3.5"
             onClick={() => void pair()}
             disabled={state.step === "pairing"}
-            className="btn btn-signal"
-            style={{ marginTop: 14 }}
           >
             {state.step === "pairing" ? "Pairing…" : "Pair extension"}
-          </button>
+          </LpActionButton>
         )}
 
       {state.step === "paired" && (
-        <div style={{ marginTop: 14, fontSize: 14 }}>
-          <span className="verified" style={{ color: "var(--signal)" }}>
+        <div className="mt-3.5 flex flex-col items-start gap-2.5 text-sm">
+          <span className="lpa-ok font-bold">
             ✓ Extension paired
             {state.expiresAt
               ? ` — active until ${new Date(state.expiresAt).toLocaleString()}`
               : " to this wallet"}
           </span>
           {state.hash && (
-            <p
-              className="mono"
-              style={{ marginTop: 8, wordBreak: "break-all", fontSize: 12, color: "var(--muted2)" }}
-            >
+            <p className="break-all font-[family-name:var(--lp-mono)] text-xs text-[var(--lp-ink-faint)]">
               {state.hash}
             </p>
           )}
-          <button
-            onClick={() => void pair()}
-            className="btn btn-dark btn-sm"
-            style={{ marginTop: 10 }}
-          >
+          <LpActionButton variant="outline" size="sm" onClick={() => void pair()}>
             Re-pair (new 7-day session)
-          </button>
+          </LpActionButton>
         </div>
       )}
 
       {state.step === "error" && (
-        <p role="alert" style={{ marginTop: 10, fontSize: 14, color: "var(--negative)" }}>
+        <p role="alert" className="lpa-bad mt-2.5! text-sm">
           {state.message}
         </p>
       )}

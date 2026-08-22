@@ -1,29 +1,32 @@
 import Link from "next/link";
+import { Eyebrow } from "../landing/ui";
 import { OnboardingActions } from "../onboarding-actions";
+import "../landing/landing.css";
+import "@/components/app.css";
 
-// Wallet entry (/app): passkey onboarding (technical-doc.md §7.1). The
-// marketing landing lives at /.
+// Wallet entry (/app): passkey onboarding (technical-doc.md §7.1) on the
+// "paper & signals" system. The marketing landing lives at /.
 
 export default function AppEntry() {
   return (
-    <main className="wrap" style={{ paddingTop: 120, paddingBottom: 96 }}>
-      <Link href="/" className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
+    <main className="lp lpa lpa-auth">
+      <Link
+        href="/"
+        className="font-[family-name:var(--lp-mono)] text-xs font-bold text-[var(--lp-ink-faint)]"
+      >
         ← vellar.xyz
       </Link>
-      <div style={{ maxWidth: 560, margin: "48px auto 0", textAlign: "center" }}>
-        <span className="eyebrow">
-          <span className="pulse" style={{ display: "inline-block", marginRight: 8 }}></span>
-          Wallet · testnet
-        </span>
-        <h1 style={{ fontSize: "clamp(2.2rem,5vw,3.4rem)", marginTop: 20 }}>
+      <div className="mx-auto mt-12 max-w-[560px] text-center">
+        <Eyebrow>Wallet · testnet</Eyebrow>
+        <h1 className="mt-5! text-[length:var(--lp-fs-h2)]! tracking-[-0.02em]!">
           Step into your wallet.
         </h1>
-        <p style={{ color: "var(--muted)", marginTop: 16, fontSize: 16, lineHeight: 1.6 }}>
+        <p className="mx-auto mt-4! max-w-[46ch] text-base leading-relaxed text-[var(--lp-ink-soft)]">
           Create a smart account with a passkey, or sign back in with the one you already have. No
-          seed phrase, no password — just you.
+          seed phrase, no password, just you.
         </p>
       </div>
-      <div className="card" style={{ maxWidth: 480, margin: "36px auto 0" }}>
+      <div className="lpa-panel mx-auto mt-9 max-w-[480px]">
         <OnboardingActions />
       </div>
     </main>

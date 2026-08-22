@@ -9,7 +9,7 @@ export function PersonaImage() {
 
   if (failed) {
     return (
-      <div className="persona-placeholder" aria-label="David Ejere">
+      <div className="lp-persona-fallback" aria-label="David Ejere">
         <span>DE</span>
       </div>
     );

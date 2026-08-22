@@ -4,6 +4,7 @@ import { useState } from "react";
 import { TrustBadge } from "@vellar/ui";
 import { VerificationApiError } from "@vellar/verification-sdk";
 import { AppShell } from "@/components/app-shell";
+import { LpActionButton, cx } from "@/app/landing/ui";
 import {
   getVerificationHistory,
   isContractId,
@@ -27,17 +28,17 @@ export default function Verify() {
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 720, display: "flex", flexDirection: "column", gap: 22 }}>
+      <div className="flex max-w-[720px] flex-col gap-5">
         <header>
-          <h1 style={{ fontSize: "clamp(1.8rem,4vw,2.4rem)" }}>Contract verification</h1>
-          <p style={{ color: "var(--neo-muted)", marginTop: 8, lineHeight: 1.6 }}>
+          <h1>Contract verification</h1>
+          <p className="mt-2! leading-relaxed text-[var(--lp-ink-soft)]">
             Check whether a deployed contract&apos;s on-chain code matches published source. We
-            rebuild the source deterministically and compare it, byte for byte, to the deployed wasm
-            — so a &quot;Verified&quot; badge means the code you can read is the code that runs.
+            rebuild the source deterministically and compare it, byte for byte, to the deployed
+            wasm, so a &quot;Verified&quot; badge means the code you can read is the code that runs.
           </p>
         </header>
 
-        <div role="tablist" aria-label="Verification" style={{ display: "flex", gap: 8 }}>
+        <div role="tablist" aria-label="Verification" className="flex gap-2">
           <TabButton active={tab === "explore"} onClick={() => setTab("explore")}>
             Check a contract
           </TabButton>
@@ -66,7 +67,7 @@ function TabButton({
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`btn btn-sm${active ? "" : " btn-ghost"}`}
+      className={cx("lp-btn", "lp-btn--sm", active ? "lp-btn--forest" : "lp-btn--outline")}
     >
       {children}
     </button>
@@ -104,29 +105,28 @@ function Explorer() {
   const latest = records?.[0];
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2">
         <input
           aria-label="Contract address"
           placeholder="C… contract address"
           value={contractId}
           onChange={(e) => setContractId(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && lookup()}
-          className="input"
-          style={{ flex: 1, minWidth: 260, fontFamily: "var(--mono, monospace)" }}
+          className="lpa-input min-w-[260px] flex-1 font-[family-name:var(--lp-mono)]"
         />
-        <button className="btn" onClick={lookup} disabled={loading || !contractId}>
+        <LpActionButton onClick={lookup} disabled={loading || !contractId}>
           {loading ? "Checking…" : "Check"}
-        </button>
+        </LpActionButton>
       </div>
 
-      {error && <p style={{ color: "var(--danger, #ef4444)" }}>{error}</p>}
+      {error && <p className="lpa-bad">{error}</p>}
 
       {records && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2.5">
             <TrustBadge status={latest?.status ?? "unverified"} />
-            <span style={{ color: "var(--neo-muted)", fontSize: 14 }}>
+            <span className="text-sm text-[var(--lp-ink-soft)]">
               {records.length === 0
                 ? "No verification has been submitted for this contract yet."
                 : `${records.length} verification attempt${records.length > 1 ? "s" : ""}`}
@@ -144,47 +144,32 @@ function Explorer() {
 
 function RecordCard({ record }: { record: PublicVerificationRecord }) {
   return (
-    <article
-      className="neo-card"
-      style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}
-    >
-      <div
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}
-      >
+    <article className="lpa-panel flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2.5">
         <TrustBadge status={record.status} size="sm" />
-        <time style={{ color: "var(--neo-muted)", fontSize: 12 }}>
+        <time className="text-xs text-[var(--lp-ink-faint)]">
           {new Date(record.updatedAt).toLocaleString()}
         </time>
       </div>
-      <dl
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: "4px 12px",
-          fontSize: 13,
-          margin: 0,
-        }}
-      >
-        <dt style={{ color: "var(--neo-muted)" }}>Source</dt>
-        <dd style={{ margin: 0 }}>
+      <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
+        <dt className="text-[var(--lp-ink-faint)]">Source</dt>
+        <dd className="m-0">
           {record.sourceType === "repo"
             ? `${record.repoUrl ?? "repo"} @ ${record.commitHash ?? "?"}`
             : "uploaded archive"}
         </dd>
-        <dt style={{ color: "var(--neo-muted)" }}>Toolchain</dt>
-        <dd style={{ margin: 0 }}>{record.toolchainVersion}</dd>
+        <dt className="text-[var(--lp-ink-faint)]">Toolchain</dt>
+        <dd className="m-0">{record.toolchainVersion}</dd>
         {record.outputHash && (
           <>
-            <dt style={{ color: "var(--neo-muted)" }}>Rebuilt hash</dt>
-            <dd style={{ margin: 0, wordBreak: "break-all", fontFamily: "var(--mono, monospace)" }}>
-              {record.outputHash}
-            </dd>
+            <dt className="text-[var(--lp-ink-faint)]">Rebuilt hash</dt>
+            <dd className="m-0 break-all font-[family-name:var(--lp-mono)]">{record.outputHash}</dd>
           </>
         )}
         {record.deployedHash && (
           <>
-            <dt style={{ color: "var(--neo-muted)" }}>Deployed hash</dt>
-            <dd style={{ margin: 0, wordBreak: "break-all", fontFamily: "var(--mono, monospace)" }}>
+            <dt className="text-[var(--lp-ink-faint)]">Deployed hash</dt>
+            <dd className="m-0 break-all font-[family-name:var(--lp-mono)]">
               {record.deployedHash}
             </dd>
           </>
@@ -193,19 +178,7 @@ function RecordCard({ record }: { record: PublicVerificationRecord }) {
       {/* H3/FIX 6 (#229): the raw build log is no longer exposed by the API — it
           leaked host paths / internal IPs. The server now returns a sanitized
           public `statusDetail` (e.g. "Build failed (clone_failed)."). */}
-      {record.statusDetail && (
-        <p
-          style={{
-            marginTop: 8,
-            padding: 12,
-            background: "var(--neo-bg, #111)",
-            borderRadius: 8,
-            fontSize: 13,
-          }}
-        >
-          {record.statusDetail}
-        </p>
-      )}
+      {record.statusDetail && <p className="lpa-well mt-2! text-[13px]">{record.statusDetail}</p>}
     </article>
   );
 }
@@ -256,20 +229,19 @@ function SubmitForm() {
   }
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <section className="flex flex-col gap-3.5">
       <Field label="Contract address">
         <input
-          className="input"
           placeholder="C…"
           value={contractId}
           onChange={(e) => setContractId(e.target.value)}
-          style={{ fontFamily: "var(--mono, monospace)" }}
+          className="font-[family-name:var(--lp-mono)]"
         />
       </Field>
 
       <Field label="Source">
-        <div style={{ display: "flex", gap: 8 }}>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div className="flex gap-3">
+          <label className="flex items-center gap-1.5 text-sm">
             <input
               type="radio"
               name="sourceType"
@@ -278,7 +250,7 @@ function SubmitForm() {
             />
             Git repository
           </label>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <label className="flex items-center gap-1.5 text-sm">
             <input
               type="radio"
               name="sourceType"
@@ -294,7 +266,6 @@ function SubmitForm() {
         <>
           <Field label="Repository URL">
             <input
-              className="input"
               placeholder="https://github.com/org/contract"
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
@@ -302,18 +273,16 @@ function SubmitForm() {
           </Field>
           <Field label="Commit hash">
             <input
-              className="input"
               placeholder="a1b2c3d…"
               value={commitHash}
               onChange={(e) => setCommitHash(e.target.value)}
-              style={{ fontFamily: "var(--mono, monospace)" }}
+              className="font-[family-name:var(--lp-mono)]"
             />
           </Field>
         </>
       ) : (
         <Field label="Archive reference">
           <input
-            className="input"
             placeholder="archive://…"
             value={archiveRef}
             onChange={(e) => setArchiveRef(e.target.value)}
@@ -323,7 +292,6 @@ function SubmitForm() {
 
       <Field label="Toolchain version">
         <input
-          className="input"
           placeholder="1.81.0"
           value={toolchain}
           onChange={(e) => setToolchain(e.target.value)}
@@ -331,30 +299,22 @@ function SubmitForm() {
       </Field>
 
       <Field label="Build flags (optional, space-separated)">
-        <input
-          className="input"
-          placeholder="--release"
-          value={flags}
-          onChange={(e) => setFlags(e.target.value)}
-        />
+        <input placeholder="--release" value={flags} onChange={(e) => setFlags(e.target.value)} />
       </Field>
 
-      {error && <p style={{ color: "var(--danger, #ef4444)" }}>{error}</p>}
+      {error && <p className="lpa-bad">{error}</p>}
 
-      <button className="btn" onClick={submit} disabled={busy}>
+      <LpActionButton className="self-start" onClick={submit} disabled={busy}>
         {busy ? "Submitting…" : "Submit for verification"}
-      </button>
+      </LpActionButton>
 
       {result && (
-        <div
-          className="neo-card"
-          style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="lpa-panel flex flex-col gap-2">
+          <div className="flex items-center gap-2.5">
             <TrustBadge status={result.status} />
             <strong>Submission received</strong>
           </div>
-          <p style={{ color: "var(--neo-muted)", fontSize: 14, margin: 0 }}>
+          <p className="m-0! text-sm text-[var(--lp-ink-soft)]">
             Your contract is queued for a deterministic rebuild. Check its status any time on the
             &quot;Check a contract&quot; tab.
           </p>
@@ -366,8 +326,8 @@ function SubmitForm() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
+    <label className="lpa-field">
+      {<span className="flabel">{label}</span>}
       {children}
     </label>
   );
