@@ -936,17 +936,23 @@
   }
 }
 
-/* Below the rail breakpoint: a plain vertical stack, no autoplay */
+/* Below the rail breakpoint: a compact two-column grid of small cards
+   (no autoplay, no interaction) — the mocks hide, so each card is just
+   its title and one line */
 @media (max-width: 900px) {
   .lp .lp-spread {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     height: auto;
-    gap: var(--lp-sp-4);
+    gap: var(--lp-sp-3);
   }
   .lp .lp-slat,
   .lp .lp-slat[aria-expanded="true"] {
     flex: none;
     cursor: default;
+  }
+  .lp .lp-slat:last-child {
+    grid-column: 1 / -1;
   }
   .lp .lp-slat-face {
     display: none;
@@ -958,6 +964,17 @@
     transform: none;
     transition: none;
     pointer-events: auto;
+    padding: var(--lp-sp-4);
+    gap: var(--lp-sp-2);
+  }
+  .lp .lp-slat-body .title {
+    font-size: 1.125rem;
+  }
+  .lp .lp-slat-body .desc {
+    font-size: 0.8125rem;
+  }
+  .lp .lp-slat-mock {
+    display: none;
   }
   .lp .lp-slat-progress {
     display: none;
@@ -1638,6 +1655,19 @@
   }
   .lp .lp-hero {
     padding-top: var(--lp-sp-lg);
+  }
+  /* Tighter mobile rhythm — the desktop scale makes phone pages very tall */
+  .lp .lp-sec {
+    padding-block: var(--lp-sp-lg);
+  }
+  .lp .lp-cta {
+    padding-block: var(--lp-sp-xl);
+  }
+  .lp .lp-tile {
+    padding: var(--lp-sp-4);
+  }
+  .lp .lp-hero-cards {
+    margin-top: var(--lp-sp-lg);
   }
 }
 
