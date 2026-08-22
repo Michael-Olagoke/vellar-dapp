@@ -56,6 +56,9 @@ export function LpNav() {
           <a href="https://docs.vellar.xyz/" onClick={close}>
             Docs
           </a>
+          <a href="https://explorer.vellar.xyz/" onClick={close}>
+            Explorer
+          </a>
         </div>
         <Link href="/app" className="lp-btn lp-btn--forest">
           Launch app
