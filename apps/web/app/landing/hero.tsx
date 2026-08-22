@@ -1,4 +1,4 @@
-import { Chips, Eyebrow, Field, Frame, LpButton, MonoRow, MonoRows, TokenPill } from "./ui";
+import { Chips, Field, Frame, LpButton, MonoRow, MonoRows, TokenPill } from "./ui";
 
 const BAZAAR = [
   { name: "Weather API", meta: "0.05 USDC · verified" },
@@ -12,7 +12,6 @@ export function Hero() {
   return (
     <header className="lp-hero">
       <div className="lp-wrap">
-        <Eyebrow data-hero-fade>Stellar testnet · live</Eyebrow>
         <h1 data-split>
           Give your agent a budget, <em>not your keys.</em>
         </h1>

@@ -501,7 +501,6 @@
   position: relative;
 }
 .lp .lp-hero h1 {
-  margin-top: var(--lp-sp-6);
   max-width: 13ch;
 }
 .lp .lp-hero .lp-lead {
@@ -572,9 +571,25 @@
   color: var(--lp-ink-faint);
 }
 .lp .lp-field {
-  background: var(--lp-paper-tint);
-  border: 1px solid var(--lp-line);
+  position: relative;
+  border: 0;
+  background: var(--field-border, var(--lp-line)); /* the 1px border */
+  clip-path: var(--lp-clip-br-sm);
   padding: var(--lp-sp-3) var(--lp-sp-4);
+}
+.lp .lp-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--field-fill, var(--lp-paper-tint));
+  clip-path: polygon(
+    1px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 12.41px),
+    calc(100% - 12.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
 }
 .lp .lp-field .lbl {
   font-size: 0.6875rem;
@@ -908,7 +923,7 @@
    block-level ones their display back. */
 .lp .lp-slat-mock .lp-field {
   display: block;
-  background: var(--lp-paper);
+  --field-fill: var(--lp-paper);
 }
 .lp .lp-slat-mock .lbl {
   display: block;
@@ -1274,8 +1289,8 @@
 .lp .lp-tile--passkey .lp-field {
   margin-top: auto;
   max-width: 400px;
-  background: var(--lp-paper);
-  border-color: transparent;
+  --field-fill: var(--lp-paper);
+  --field-border: transparent;
 }
 .lp .lp-tile--policies {
   grid-area: policies;
@@ -1685,11 +1700,24 @@
   }
   /* phone-only content trim — desktop and tablet keep the full cards */
   .lp .lp-hero-cards .lp-field .sub,
+  .lp .lp-hero-cards .lp-field .lp-token,
   .lp .lp-hero-cards .lp-chips {
     display: none;
   }
+  /* narrow columns: mono rows wrap instead of ellipsizing to nonsense */
   .lp .lp-hero-cards .lp-mrow {
-    gap: var(--lp-sp-2);
+    gap: 2px var(--lp-sp-2);
+    white-space: normal;
+    flex-wrap: wrap;
+  }
+  .lp .lp-hero-cards .lp-mrow span {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+  .lp .lp-hero-cards .lp-field .row {
+    flex-wrap: wrap;
   }
   .lp .lp-hero-cards .lp-pcard {
     padding: var(--lp-sp-4);
