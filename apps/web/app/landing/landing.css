@@ -529,6 +529,12 @@
 }
 
 /* Product cards row */
+.lp .lp-hero-cards > .lp-frame,
+.lp .lp-hero-cards .lp-pcard,
+.lp .lp-hero-cards .lp-mrow,
+.lp .lp-hero-cards .lp-rrow .rn {
+  min-width: 0;
+}
 .lp .lp-hero-cards {
   position: relative;
   z-index: 1;
@@ -1120,15 +1126,33 @@
 }
 .lp .lp-platcard .mini {
   margin-top: auto;
-  background: var(--lp-paper);
-  border: 1px solid var(--lp-line);
+  position: relative;
+  border: 0;
+  background: var(--lp-line); /* the 1px border */
+  clip-path: var(--lp-clip-br-sm);
   padding: var(--lp-sp-4);
   color: var(--lp-ink);
 }
+.lp .lp-platcard .mini::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--lp-paper);
+  clip-path: polygon(
+    1px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 12.41px),
+    calc(100% - 12.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
+}
 .lp .lp-platcard--dark .mini {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: var(--lp-line-dark);
+  background: var(--lp-line-dark);
   color: var(--lp-on-dark);
+}
+.lp .lp-platcard--dark .mini::before {
+  background: color-mix(in srgb, var(--lp-on-dark) 5%, var(--lp-ink));
 }
 .lp .lp-platcard--dark .mini .lp-mrow {
   border-color: var(--lp-line-dark);
@@ -1318,9 +1342,25 @@
   grid-row: 1 / 4;
   align-self: center;
   width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--lp-line-dark);
+  position: relative;
+  border: 0;
+  background: var(--lp-line-dark); /* the 1px border */
+  clip-path: var(--lp-clip-br-sm);
   padding: var(--lp-sp-4);
+}
+.lp .lp-tile--sdk .tcode::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--lp-on-dark) 5%, var(--lp-ink));
+  clip-path: polygon(
+    1px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 12.41px),
+    calc(100% - 12.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
 }
 .lp .lp-tile--sdk .tcode .lp-mrow {
   border-color: var(--lp-line-dark);
@@ -1564,7 +1604,10 @@
 }
 @media (max-width: 640px) {
   .lp .lp-about-layers {
-    grid-template-columns: 1fr;
+    gap: var(--lp-sp-4);
+  }
+  .lp .lp-about-layer p {
+    font-size: 0.8125rem;
   }
 }
 
@@ -1596,7 +1639,7 @@
 
 @media (max-width: 1000px) {
   .lp .lp-hero-cards {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
   .lp .lp-pillars,
   .lp .lp-steps {
@@ -1632,23 +1675,90 @@
   .lp .lp-foot-top {
     grid-template-columns: 1fr;
   }
-  .lp .lp-hero-cards,
+  /* Two-up compact grids — the mobile pattern for stacked card sections */
+  .lp .lp-hero-cards {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--lp-sp-4) var(--lp-sp-3);
+  }
+  .lp .lp-hero-cards > .lp-frame:last-child {
+    grid-column: 1 / -1;
+  }
+  /* phone-only content trim — desktop and tablet keep the full cards */
+  .lp .lp-hero-cards .lp-field .sub,
+  .lp .lp-hero-cards .lp-chips {
+    display: none;
+  }
+  .lp .lp-hero-cards .lp-mrow {
+    gap: var(--lp-sp-2);
+  }
+  .lp .lp-hero-cards .lp-pcard {
+    padding: var(--lp-sp-4);
+    gap: var(--lp-sp-3);
+    height: 100%;
+  }
+  .lp .lp-hero-cards .lp-pcard-top {
+    font-size: 0.6875rem;
+  }
+  .lp .lp-hero-cards .lp-field {
+    padding: var(--lp-sp-2) var(--lp-sp-3);
+  }
+  /* inline amount sizes need the override at phone width */
+  .lp .lp-hero-cards .lp-field .amt {
+    font-size: 1rem !important;
+  }
+  .lp .lp-hero-cards .lp-field .sub {
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .lp .lp-hero-cards .lp-mrow {
+    font-size: 0.6875rem;
+    padding: 6px 1px;
+  }
   .lp .lp-pillars,
   .lp .lp-steps {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--lp-sp-3);
+  }
+  .lp .lp-pillar:last-child,
+  .lp .lp-step:last-child {
+    grid-column: 1 / -1;
+  }
+  .lp .lp-pillar,
+  .lp .lp-step {
+    padding: var(--lp-sp-4);
+    gap: var(--lp-sp-2);
+  }
+  .lp .lp-pillar .num {
+    font-size: 1.75rem;
+  }
+  .lp .lp-pillar p,
+  .lp .lp-step p {
+    font-size: 0.8125rem;
   }
   .lp .lp-bento {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--lp-sp-3);
     grid-template-areas:
-      "passkey"
-      "policies"
-      "verify"
-      "trust"
-      "swaps"
-      "fees"
-      "cleanup"
-      "custody"
-      "sdk";
+      "passkey passkey"
+      "policies policies"
+      "swaps fees"
+      "verify trust"
+      "cleanup cleanup"
+      "custody custody"
+      "sdk sdk";
+  }
+  .lp .lp-tile p {
+    font-size: 0.8125rem;
+  }
+  .lp .lp-tile .ico {
+    width: 36px;
+    height: 36px;
+  }
+  .lp .lp-tile--passkey .lp-field {
+    display: none;
+  }
+  .lp .lp-tile--passkey h4 {
+    font-size: 1.1875rem;
   }
   .lp .lp-foot-cols {
     grid-template-columns: 1fr 1fr;
