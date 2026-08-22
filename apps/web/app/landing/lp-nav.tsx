@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { scrollToSection, useScrollSpy } from "./use-scroll-spy";
 
 /** Landing sections the nav tracks for scroll-spy highlighting. */
@@ -16,14 +17,12 @@ const SECTION_IDS = SECTIONS.map((s) => s.id);
 /** Sticky paper nav for all .lp marketing pages. */
 export function LpNav() {
   const [open, setOpen] = useState(false);
-  const [path, setPath] = useState("");
   const close = () => setOpen(false);
+  // usePathname (not window.location read once on mount): the nav lives in the
+  // shared layout, so client-side navigation must re-derive the active link.
+  const path = usePathname() ?? "";
   const onLanding = path === "/";
   const section = useScrollSpy(SECTION_IDS, onLanding);
-
-  useEffect(() => {
-    setPath(window.location.pathname);
-  }, []);
 
   const goTo = (id: string) => (e: React.MouseEvent) => {
     close();
@@ -50,7 +49,7 @@ export function LpNav() {
               {s.label}
             </Link>
           ))}
-          <Link href="/about" onClick={close}>
+          <Link href="/about" className={path === "/about" ? "active" : ""} onClick={close}>
             About
           </Link>
           <a href="https://docs.vellar.xyz/" onClick={close}>
