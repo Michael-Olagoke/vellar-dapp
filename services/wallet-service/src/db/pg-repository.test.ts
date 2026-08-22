@@ -29,7 +29,9 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
   });
 
   afterAll(async () => {
-    await handle.close();
+    // Guarded: if beforeAll's connectDb threw, handle never got assigned and a
+    // bare close() would bury the real failure under a TypeError.
+    await handle?.close();
   });
 
   beforeEach(async () => {

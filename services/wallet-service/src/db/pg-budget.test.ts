@@ -43,7 +43,9 @@ describe.skipIf(!DATABASE_URL)("createPgSpendBudget (atomic rolling-window budge
   });
 
   afterAll(async () => {
-    await handle.close();
+    // Guarded: if beforeAll's connectDb threw, handle never got assigned and a
+    // bare close() would bury the real failure under a TypeError.
+    await handle?.close();
   });
 
   async function ledgerRowCount(): Promise<number> {

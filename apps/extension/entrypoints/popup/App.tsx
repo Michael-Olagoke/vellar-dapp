@@ -48,9 +48,28 @@ function useQuickBalance(wallet: PairedWallet | undefined) {
   return balance;
 }
 
-// Popup (technical-doc.md §4.2, §7.3; design.md §8): dark neomorphic at popup
-// density. Approval prompts show the requesting origin ALWAYS (§8.2); quick
+// Popup (technical-doc.md §4.2, §7.3): "paper & signals" at popup density
+// (see popup.css). Approval prompts show the requesting origin ALWAYS (§8.2); quick
 // account view + per-origin permissions; advanced workflows deep-link out.
+
+function CopyGlyph() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+    </svg>
+  );
+}
 
 interface RequestDescription {
   text: string;
@@ -176,15 +195,17 @@ function ApprovalCard({
   }
 
   return (
-    <section className="neo" aria-label="Connection request">
+    <section className="panel" aria-label="Connection request">
       <span className="eyebrow">Request from</span>
       <p className="origin">{approval.origin}</p>
-      <span className="trust">{isSign ? "⚠ Signature request" : "✓ Connection request"}</span>
+      <span className={isSign ? "trust warn" : "trust"}>
+        {isSign ? "⚠ Signature request" : "✓ Connection request"}
+      </span>
       <p className="muted" style={{ fontSize: 13, margin: "10px 0 0", lineHeight: 1.5 }}>
         {desc.text}
       </p>
       {desc.address && (
-        <div className="neo-inset" style={{ marginTop: 8 }}>
+        <div className="well" style={{ marginTop: 8 }}>
           <span className="eyebrow" style={{ fontSize: 9 }}>
             Wallet
           </span>
@@ -195,7 +216,7 @@ function ApprovalCard({
       )}
 
       {isSign && summary && (
-        <div className="neo-inset" style={{ marginTop: 8 }}>
+        <div className="well" style={{ marginTop: 8 }}>
           <span className="eyebrow" style={{ fontSize: 9 }}>
             {summary.undecoded ? "Transaction" : "This transaction will"}
           </span>
@@ -212,10 +233,10 @@ function ApprovalCard({
       )}
 
       <div className="btn-row" style={{ marginTop: 14 }}>
-        <button className="btn btn-signal" disabled={busy} onClick={() => void resolve(true)}>
+        <button className="btn btn-sun" disabled={busy} onClick={() => void resolve(true)}>
           Approve
         </button>
-        <button className="btn btn-neo" disabled={busy} onClick={() => void resolve(false)}>
+        <button className="btn btn-outline" disabled={busy} onClick={() => void resolve(false)}>
           Reject
         </button>
       </div>
@@ -268,12 +289,8 @@ export function App() {
   return (
     <main className="pop">
       <div className="topbar">
-        <img className="brand" src="/logo-light.png" alt="Vellar" />
-        {wallet && (
-          <span className="netpill">
-            <span className="dot" /> {wallet.network}
-          </span>
-        )}
+        <img className="brand" src="/logo-mark.png" alt="Vellar" />
+        {wallet && <span className="netpill">{wallet.network}</span>}
       </div>
 
       {approvals.map((approval) => (
@@ -282,7 +299,7 @@ export function App() {
 
       {wallet ? (
         <>
-          <section className="neo">
+          <section className="panel">
             <div style={{ textAlign: "center" }}>
               <span className="eyebrow">Balance</span>
             </div>
@@ -291,7 +308,7 @@ export function App() {
             </div>
             <div className="qa">
               <button onClick={copyAddress}>
-                <i>{copied ? "✓" : "⧉"}</i>
+                <i>{copied ? "✓" : <CopyGlyph />}</i>
                 {copied ? "Copied" : "Address"}
               </button>
               {wallet.webAppOrigin && (
@@ -302,7 +319,7 @@ export function App() {
             </div>
           </section>
 
-          <div className="neo-inset">
+          <div className="well">
             <span className="eyebrow">Smart account</span>
             <p className="mono" style={{ margin: "6px 0 0", fontSize: 11, wordBreak: "break-all" }}>
               {wallet.address}
@@ -322,7 +339,7 @@ export function App() {
           )}
         </>
       ) : (
-        <section className="neo">
+        <section className="panel">
           <span className="eyebrow">Not paired</span>
           <p className="muted" style={{ fontSize: 13, margin: "8px 0 0", lineHeight: 1.55 }}>
             Open the Vellar web app, sign in, and choose Settings → Pair extension to get started.
@@ -331,15 +348,14 @@ export function App() {
       )}
 
       {state && state.grants.length > 0 && (
-        <section className="neo" aria-label="Connected dApps">
+        <section className="panel" aria-label="Connected dApps">
           <span className="eyebrow">Connected dApps</span>
           <div style={{ marginTop: 4 }}>
             {state.grants.map((grant) => (
               <div key={`${grant.origin}-${grant.network}`} className="dapp">
                 <span style={{ wordBreak: "break-all" }}>{grant.origin}</span>
                 <button
-                  className="btn btn-neo"
-                  style={{ padding: "6px 12px", fontSize: 12 }}
+                  className="btn btn-outline"
                   onClick={() => void revoke(grant.origin, grant.network)}
                 >
                   Revoke

@@ -12,6 +12,7 @@ import {
   type TokenInfo,
 } from "vellar-sdk";
 import { isUserCancellation } from "@vellar/passkey";
+import { Eyebrow, LpActionButton } from "@/app/landing/ui";
 import { walletErrorMessage } from "@/lib/messages";
 import { trackTransaction } from "@/lib/track";
 import { usePaymentClient } from "@/lib/wallet-context";
@@ -100,80 +101,60 @@ export function SendPayment({
   }
 
   return (
-    <section className="neo" style={{ padding: 22 }}>
-      <span className="eyebrow">Send {token.symbol}</span>
+    <section className="lpa-panel">
+      <Eyebrow>Send {token.symbol}</Eyebrow>
 
       {flow.step === "form" && (
         <form
           onSubmit={(e) => void form.handleSubmit(prepare)(e)}
-          style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}
+          className="mt-3.5 flex flex-col gap-3"
         >
-          <label className="form-field">
+          <label className="lpa-field">
             <span className="flabel">Recipient</span>
             <input {...form.register("to")} placeholder="G... or C..." />
             {form.formState.errors.to && (
               <span className="ferror">{form.formState.errors.to.message}</span>
             )}
           </label>
-          <label className="form-field amount">
+          <label className="lpa-field">
             <span className="flabel">Amount ({token.symbol})</span>
             <input {...form.register("amount")} placeholder="0.0" inputMode="decimal" />
             {form.formState.errors.amount && (
               <span className="ferror">{form.formState.errors.amount.message}</span>
             )}
           </label>
-          <button
+          <LpActionButton
             type="submit"
             disabled={form.formState.isSubmitting}
-            className="btn btn-signal"
-            style={{ alignSelf: "flex-start" }}
+            className="self-start"
           >
             {form.formState.isSubmitting ? "Preparing…" : "Review payment"}
-          </button>
+          </LpActionButton>
         </form>
       )}
 
       {(flow.step === "review" || flow.step === "submitting") && (
-        <div
-          role="dialog"
-          aria-label="Review payment"
-          style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}
-        >
-          <span className="verified" style={{ alignSelf: "flex-start", color: "var(--signal)" }}>
+        <div role="dialog" aria-label="Review payment" className="mt-3.5 flex flex-col gap-3">
+          <span className="lpa-ok self-start text-[13px] font-bold">
             ✓ Review before signing — this cannot be undone
           </span>
-          <dl
-            className="neo-inset"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              fontSize: 14,
-              padding: "14px 16px",
-            }}
-          >
+          <dl className="lpa-well flex flex-col gap-2.5 text-sm">
             {(
               [
-                ["From", flow.prepared.review.from, true],
-                ["To", flow.prepared.review.to, true],
+                ["From", flow.prepared.review.from],
+                ["To", flow.prepared.review.to],
               ] as const
             ).map(([label, value]) => (
-              <div
-                key={label}
-                style={{ display: "flex", justifyContent: "space-between", gap: 16 }}
-              >
-                <dt className="lbl">{label}</dt>
-                <dd
-                  className="mono"
-                  style={{ textAlign: "right", wordBreak: "break-all", fontSize: 12 }}
-                >
+              <div key={label} className="flex justify-between gap-4">
+                <dt className="text-[var(--lp-ink-faint)]">{label}</dt>
+                <dd className="break-all text-right font-[family-name:var(--lp-mono)] text-xs">
                   {value}
                 </dd>
               </div>
             ))}
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
-              <dt className="lbl">Amount</dt>
-              <dd className="display" style={{ fontSize: 20 }}>
+            <div className="flex justify-between gap-4">
+              <dt className="text-[var(--lp-ink-faint)]">Amount</dt>
+              <dd className="lpa-amt text-xl">
                 {formatTokenAmount(
                   flow.prepared.review.amount,
                   flow.prepared.review.token.decimals,
@@ -181,64 +162,57 @@ export function SendPayment({
                 {flow.prepared.review.token.symbol}
               </dd>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
-              <dt className="lbl">Network</dt>
-              <dd style={{ textTransform: "uppercase" }}>{flow.prepared.review.network}</dd>
+            <div className="flex justify-between gap-4">
+              <dt className="text-[var(--lp-ink-faint)]">Network</dt>
+              <dd className="uppercase">{flow.prepared.review.network}</dd>
             </div>
           </dl>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button
+          <div className="flex gap-3">
+            <LpActionButton
               onClick={() => void confirm(flow.prepared)}
               disabled={flow.step === "submitting"}
-              className="btn btn-signal"
             >
               {flow.step === "submitting" ? "Signing…" : "Confirm with passkey"}
-            </button>
-            <button
+            </LpActionButton>
+            <LpActionButton
+              variant="outline"
               onClick={() => setFlow({ step: "form" })}
               disabled={flow.step === "submitting"}
-              className="btn btn-dark"
             >
               Cancel
-            </button>
+            </LpActionButton>
           </div>
         </div>
       )}
 
       {flow.step === "tracking" && (
-        <p className="animate-pulse" style={{ marginTop: 14, fontSize: 14, color: "var(--muted)" }}>
+        <p className="mt-3.5! animate-pulse text-sm text-[var(--lp-ink-soft)]">
           Confirming on the network…{" "}
-          <span className="mono" style={{ wordBreak: "break-all" }}>
-            {flow.hash}
-          </span>
+          <span className="break-all font-[family-name:var(--lp-mono)]">{flow.hash}</span>
         </p>
       )}
 
       {flow.step === "done" && (
-        <div
-          style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}
-        >
-          <p style={{ color: flow.result === "success" ? "var(--signal)" : "var(--negative)" }}>
+        <div className="mt-3.5 flex flex-col gap-2 text-sm">
+          <p className={flow.result === "success" ? "lpa-ok" : "lpa-bad"}>
             {flow.result === "success" ? "Payment confirmed." : "Payment failed on the network."}
           </p>
-          <p
-            className="mono"
-            style={{ wordBreak: "break-all", fontSize: 12, color: "var(--muted2)" }}
-          >
+          <p className="break-all font-[family-name:var(--lp-mono)] text-xs text-[var(--lp-ink-faint)]">
             {flow.hash}
           </p>
-          <button
+          <LpActionButton
+            variant="outline"
+            size="sm"
+            className="self-start"
             onClick={() => setFlow({ step: "form" })}
-            className="btn btn-dark btn-sm"
-            style={{ alignSelf: "flex-start" }}
           >
             Send another
-          </button>
+          </LpActionButton>
         </div>
       )}
 
       {error && (
-        <p role="alert" style={{ marginTop: 14, fontSize: 14, color: "var(--negative)" }}>
+        <p role="alert" className="lpa-bad mt-3.5! text-sm">
           {error}
         </p>
       )}

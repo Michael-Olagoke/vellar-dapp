@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { PolicyDefinition, WalletSession } from "@vellar/types";
 import { AppShell } from "@/components/app-shell";
+import { Eyebrow, LpActionButton } from "@/app/landing/ui";
 import { getWalletRuntime } from "@/lib/connector-factory";
 import { useWalletSession } from "@/lib/wallet-context";
 import {
@@ -43,18 +44,10 @@ export default function Policies() {
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 720, display: "flex", flexDirection: "column", gap: 22 }}>
+      <div className="flex max-w-[720px] flex-col gap-5">
         <header>
-          <h1 style={{ fontSize: "clamp(1.8rem,4vw,2.4rem)" }}>Account policies</h1>
-          <p
-            style={{
-              marginTop: 12,
-              maxWidth: 560,
-              fontSize: 15,
-              color: "var(--muted)",
-              lineHeight: 1.6,
-            }}
-          >
+          <h1>Account policies</h1>
+          <p className="mt-3! max-w-[560px] text-[15px] leading-relaxed text-[var(--lp-ink-soft)]">
             Add programmable guardrails to your smart account — spending limits, multisig, contract
             allowlists. Policies are built from structured templates and enforced on-chain — by the
             deployed contract, not by the app.
@@ -62,7 +55,7 @@ export default function Policies() {
         </header>
 
         {error && (
-          <p role="alert" style={{ fontSize: 14, color: "var(--negative)" }}>
+          <p role="alert" className="lpa-bad text-sm">
             {error}
           </p>
         )}
@@ -103,11 +96,7 @@ function TemplatePicker({
   onPick: (t: PolicyTemplateInfo) => void;
 }) {
   if (!templates) {
-    return (
-      <p className="animate-pulse" style={{ fontSize: 14, color: "var(--muted2)" }}>
-        Loading templates…
-      </p>
-    );
+    return <p className="animate-pulse text-sm text-[var(--lp-ink-faint)]">Loading templates…</p>;
   }
   // Available templates first, unavailable ("Coming soon") last — a stable sort
   // keeps the registry's order within each group so live templates don't get an
@@ -115,13 +104,7 @@ function TemplatePicker({
   const isAvailable = (t: PolicyTemplateInfo) => t.enforcement.kind !== "custom-contract-pending";
   const ordered = [...templates].sort((a, b) => Number(isAvailable(b)) - Number(isAvailable(a)));
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))",
-        gap: 16,
-      }}
-    >
+    <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
       {ordered.map((t) => {
         const available = isAvailable(t);
         return (
@@ -129,23 +112,17 @@ function TemplatePicker({
             key={t.type}
             onClick={() => available && onPick(t)}
             disabled={!available}
-            className="neo"
-            style={{
-              padding: 18,
-              textAlign: "left",
-              cursor: available ? "pointer" : "not-allowed",
-              opacity: available ? 1 : 0.55,
-            }}
+            className="lpa-panel"
           >
-            <span className="eyebrow" style={{ fontSize: 10 }}>
+            <span className="block font-[family-name:var(--lp-display)] text-[15px] font-bold">
               {t.title}
             </span>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+            <span className="mt-2 block text-[13px] leading-normal text-[var(--lp-ink-soft)]">
               {t.description}
-            </p>
-            <p style={{ marginTop: 10, fontSize: 11, color: "var(--muted2)" }}>
+            </span>
+            <span className="mt-2.5 block text-[11px] font-bold text-[var(--lp-ink-faint)]">
               {available ? "Configure →" : "Coming soon"}
-            </p>
+            </span>
           </button>
         );
       })}
@@ -226,18 +203,15 @@ function ConfigureForm({
   }
 
   return (
-    <section
-      className="neo"
-      style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}
-    >
-      <span className="eyebrow">{template.title}</span>
-      <p style={{ fontSize: 13, color: "var(--muted2)" }}>
+    <section className="lpa-panel flex flex-col gap-3.5">
+      <Eyebrow>{template.title}</Eyebrow>
+      <p className="text-[13px] text-[var(--lp-ink-faint)]">
         {enforcementLabel(template.enforcement)}
       </p>
 
       {template.type === "multisig_threshold" && (
         <>
-          <label className="form-field">
+          <label className="lpa-field">
             <span className="flabel">Co-owner addresses (G… or C…, comma or space separated)</span>
             <textarea
               rows={3}
@@ -246,7 +220,7 @@ function ConfigureForm({
               placeholder="GABC… GDEF…"
             />
           </label>
-          <label className="form-field">
+          <label className="lpa-field">
             <span className="flabel">Approvals required (threshold)</span>
             <input
               value={threshold}
@@ -259,7 +233,7 @@ function ConfigureForm({
 
       {template.type === "spending_limit" && (
         <>
-          <label className="form-field amount">
+          <label className="lpa-field">
             <span className="flabel">Daily limit (XLM, optional)</span>
             <input
               value={dailyXlm}
@@ -268,7 +242,7 @@ function ConfigureForm({
               inputMode="decimal"
             />
           </label>
-          <label className="form-field amount">
+          <label className="lpa-field">
             <span className="flabel">Per-transaction limit (XLM, optional)</span>
             <input
               value={perTxXlm}
@@ -281,7 +255,7 @@ function ConfigureForm({
       )}
 
       {template.type === "contract_allowlist" && (
-        <label className="form-field">
+        <label className="lpa-field">
           <span className="flabel">Allowed contracts (C… addresses)</span>
           <textarea
             rows={3}
@@ -293,30 +267,27 @@ function ConfigureForm({
       )}
 
       {template.type === "single_owner" && (
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>
+        <p className="text-sm text-[var(--lp-ink-soft)]">
           Your account ({owner.slice(0, 6)}…{owner.slice(-6)}) as the sole owner. Generate to review
           the policy record.
         </p>
       )}
 
       {errors.length > 0 && (
-        <ul
-          role="alert"
-          style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--negative)" }}
-        >
+        <ul role="alert" className="lpa-bad m-0 pl-4.5 text-[13px]">
           {errors.map((e, i) => (
             <li key={i}>{e}</li>
           ))}
         </ul>
       )}
 
-      <div style={{ display: "flex", gap: 12 }}>
-        <button onClick={() => void submit()} disabled={busy} className="btn btn-signal">
+      <div className="flex gap-3">
+        <LpActionButton onClick={() => void submit()} disabled={busy}>
           {busy ? "Validating…" : "Validate & generate"}
-        </button>
-        <button onClick={onBack} disabled={busy} className="btn btn-dark">
+        </LpActionButton>
+        <LpActionButton variant="outline" onClick={onBack} disabled={busy}>
           Back
-        </button>
+        </LpActionButton>
       </div>
     </section>
   );
@@ -398,52 +369,36 @@ function ReviewCard({
   }
 
   return (
-    <section
-      className="neo"
-      style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}
-    >
-      <span className="verified" style={{ alignSelf: "flex-start", color: "var(--signal)" }}>
+    <section className="lpa-panel flex flex-col gap-3.5">
+      <span className="lpa-ok self-start text-sm font-bold">
         ✓ Policy generated — review before deploying
       </span>
 
-      <div className="neo-inset" style={{ padding: "14px 16px" }}>
-        <span className="lbl mono" style={{ fontSize: 11, color: "var(--muted2)" }}>
+      <div className="lpa-well">
+        <span className="flabel block font-[family-name:var(--lp-mono)] text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--lp-ink-faint)]">
           POLICY DEFINITION
         </span>
-        <pre
-          className="mono"
-          style={{
-            margin: "8px 0 0",
-            fontSize: 12,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
-            color: "var(--ink)",
-          }}
-        >
+        <pre className="mt-2 whitespace-pre-wrap break-all font-[family-name:var(--lp-mono)] text-xs">
           {JSON.stringify(policy.definition, null, 2)}
         </pre>
       </div>
 
-      <div className="neo-inset" style={{ padding: "14px 16px" }}>
-        <span className="lbl mono" style={{ fontSize: 11, color: "var(--muted2)" }}>
+      <div className="lpa-well">
+        <span className="flabel block font-[family-name:var(--lp-mono)] text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--lp-ink-faint)]">
           CONTENT HASH
         </span>
-        <p className="mono" style={{ margin: "6px 0 0", fontSize: 12, wordBreak: "break-all" }}>
+        <p className="mt-1.5! break-all font-[family-name:var(--lp-mono)] text-xs">
           {policy.policyHash}
         </p>
       </div>
 
-      <p style={{ fontSize: 13, color: "var(--muted)" }}>
+      <p className="text-[13px] text-[var(--lp-ink-soft)]">
         Enforcement: {enforcementLabel(enforcement)}
       </p>
 
       {cap && (
-        <div
-          className="neo-inset"
-          style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
-        >
-          Your account can move up to{" "}
-          <strong style={{ color: "var(--ink)" }}>{stroopsToXlm(cap.dailyLimitStroops)} XLM</strong>{" "}
+        <div className="lpa-well text-[13px] leading-relaxed text-[var(--lp-ink-soft)]">
+          Your account can move up to <strong>{stroopsToXlm(cap.dailyLimitStroops)} XLM</strong>{" "}
           total per {Math.round(cap.windowSeconds / 3600)}-hour period through this policy. The
           limit resets on a fixed schedule, not a continuously sliding window — so transfers made
           just before and just after a reset can move up to twice that amount within a short span.
@@ -452,70 +407,53 @@ function ReviewCard({
       )}
 
       {isVerifiedOnly && (
-        <div
-          className="neo-inset"
-          style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
-        >
+        <div className="lpa-well text-[13px] leading-relaxed text-[var(--lp-ink-soft)]">
           Enforced on-chain against the attestation registry. Verified means provenance, not audited
           or safe.
         </div>
       )}
 
       {state.name === "done" || state.name === "detaching" ? (
-        <div
-          className="neo-inset"
-          style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
-        >
-          <p style={{ margin: 0, color: "var(--signal)", fontWeight: 700 }}>
-            ✓ Policy attached to your account
-          </p>
-          <p className="mono" style={{ margin: "8px 0 0", fontSize: 11, wordBreak: "break-all" }}>
+        <div className="lpa-well text-[13px] leading-relaxed text-[var(--lp-ink-soft)]">
+          <p className="lpa-ok m-0! font-bold">✓ Policy attached to your account</p>
+          <p className="mt-2! break-all font-[family-name:var(--lp-mono)] text-[11px]">
             contract {state.contractId}
           </p>
           {state.name === "done" && (
-            <p className="mono" style={{ margin: "4px 0 0", fontSize: 11, wordBreak: "break-all" }}>
+            <p className="mt-1! break-all font-[family-name:var(--lp-mono)] text-[11px]">
               tx {state.attachTxHash}
             </p>
           )}
-          <p style={{ margin: "12px 0 0" }}>
+          <p className="mt-3!">
             Changed your mind, or a policy is blocking transactions you need? You can remove it —
             your passkey detaches it directly, no policy approval required.
           </p>
-          <button
-            type="button"
-            className="neo-btn"
+          <LpActionButton
+            variant="outline"
+            size="sm"
+            className="mt-2.5"
             disabled={state.name === "detaching"}
             onClick={() => void runDetach(state.contractId)}
-            style={{ marginTop: 10, fontSize: 12 }}
           >
             {state.name === "detaching"
               ? "Approve in your passkey to remove…"
               : "Detach this policy"}
-          </button>
+          </LpActionButton>
         </div>
       ) : state.name === "detached" ? (
-        <div
-          className="neo-inset"
-          style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
-        >
-          <p style={{ margin: 0, color: "var(--signal)", fontWeight: 700 }}>✓ Policy removed</p>
-          <p className="mono" style={{ margin: "8px 0 0", fontSize: 11, wordBreak: "break-all" }}>
+        <div className="lpa-well text-[13px] leading-relaxed text-[var(--lp-ink-soft)]">
+          <p className="lpa-ok m-0! font-bold">✓ Policy removed</p>
+          <p className="mt-2! break-all font-[family-name:var(--lp-mono)] text-[11px]">
             tx {state.removalTxHash}
           </p>
         </div>
       ) : deployable ? (
-        <div
-          className="neo-inset"
-          style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
-        >
+        <div className="lpa-well text-[13px] leading-relaxed text-[var(--lp-ink-soft)]">
           Deploying attaches this policy to your smart account: we deploy a policy contract bound to
           your account, then you approve the attach in your passkey. Nothing is signed silently.
         </div>
       ) : (
-        <div
-          className="neo-inset"
-          style={{ padding: "14px 16px", fontSize: 13, color: "var(--muted)", lineHeight: 1.55 }}
-        >
+        <div className="lpa-well text-[13px] leading-relaxed text-[var(--lp-ink-soft)]">
           This policy type is enforced by the smart wallet&apos;s native signer limits rather than a
           deployed contract; the authored policy and its hash are recorded now. On-chain wiring for
           this template is tracked in BUILD-PLAN.
@@ -523,24 +461,24 @@ function ReviewCard({
       )}
 
       {state.name === "error" && (
-        <p role="alert" style={{ fontSize: 13, color: "var(--negative)" }}>
+        <p role="alert" className="lpa-bad text-[13px]">
           {state.message}
         </p>
       )}
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+      <div className="flex items-center gap-3">
         {deployable && state.name !== "done" && (
-          <button onClick={() => void runDeploy()} disabled={busy} className="btn btn-signal">
+          <LpActionButton onClick={() => void runDeploy()} disabled={busy}>
             {state.name === "simulating"
               ? "Checking…"
               : state.name === "deploying"
                 ? state.step
                 : "Deploy to my account"}
-          </button>
+          </LpActionButton>
         )}
-        <button onClick={onDone} disabled={busy} className="btn btn-dark">
+        <LpActionButton variant="outline" onClick={onDone} disabled={busy}>
           {state.name === "done" ? "Done" : "Back"}
-        </button>
+        </LpActionButton>
       </div>
     </section>
   );

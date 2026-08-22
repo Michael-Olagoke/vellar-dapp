@@ -1,6 +1,8 @@
 # Source-of-truth docs — never reformat (see CLAUDE.md)
 idea.md
 technical-doc.md
+# Measured design audit — values were read off a live page; don't reflow
+landing-page.md
 
 pnpm-lock.yaml
 .next/

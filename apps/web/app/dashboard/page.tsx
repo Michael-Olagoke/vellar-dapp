@@ -3,14 +3,15 @@
 import { useState } from "react";
 import { formatTokenAmount } from "vellar-sdk";
 import { AppShell } from "@/components/app-shell";
+import { Eyebrow, LpActionButton } from "@/app/landing/ui";
 import { useBalances } from "@/lib/balances";
 import { useWalletSession } from "@/lib/wallet-context";
 import { ReceiveCard } from "./receive-card";
 import { SendPayment } from "./send-payment";
 
-// Wallet dashboard (docs/decisions.md dark-neomorphic shell): panel grid —
-// Account overview (balance + details) · My assets · Activity. Send/Receive
-// open as focused panels replacing the grid.
+// Wallet dashboard ("paper & signals" shell): panel grid — Account overview
+// (balance + details) · My assets · Activity. Send/Receive open as focused
+// panels replacing the grid.
 
 type Panel = "grid" | "send" | "receive";
 
@@ -30,17 +31,16 @@ export default function Dashboard() {
       ]}
     >
       {panel === "receive" && session && (
-        <div style={{ maxWidth: 460 }}>
+        <div className="max-w-[460px]">
           <ReceiveCard accountId={session.accountId} onClose={() => setPanel("grid")} />
         </div>
       )}
 
       {panel === "send" && session && (
-        <div style={{ maxWidth: 460 }}>
+        <div className="max-w-[460px]">
           <button
             onClick={() => setPanel("grid")}
-            className="mono"
-            style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 14, display: "block" }}
+            className="mb-3.5 block cursor-pointer font-[family-name:var(--lp-mono)] text-xs font-bold text-[var(--lp-ink-faint)]"
           >
             ← Wallet
           </button>
@@ -52,9 +52,9 @@ export default function Dashboard() {
               onSuccess={() => void balances.refetch()}
             />
           ) : (
-            <section className="neo" style={{ padding: 22 }}>
-              <span className="eyebrow">Send</span>
-              <p style={{ marginTop: 12, fontSize: 14, color: "var(--muted)" }}>
+            <section className="lpa-panel">
+              <Eyebrow>Send</Eyebrow>
+              <p className="mt-3! text-sm text-[var(--lp-ink-soft)]">
                 Fund the wallet first — receive some XLM, then come back to send.
               </p>
             </section>
@@ -63,49 +63,32 @@ export default function Dashboard() {
       )}
 
       {panel === "grid" && (
-        <div
-          className="panel-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 22,
-            alignItems: "start",
-          }}
-        >
+        <div className="grid items-start gap-5 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
           {/* Account overview */}
-          <section
-            className="neo"
-            style={{ padding: 24, display: "flex", flexDirection: "column" }}
-          >
-            <span className="eyebrow">Account balance</span>
-            <div className="display" style={{ fontSize: 44, marginTop: 10 }}>
+          <section className="lpa-panel flex flex-col">
+            <Eyebrow>Account balance</Eyebrow>
+            <div className="lpa-balance mt-2.5">
               {balances.isPending ? (
-                <span className="animate-pulse" style={{ color: "var(--muted2)" }}>
-                  …
-                </span>
+                <span className="animate-pulse text-[var(--lp-ink-faint)]">…</span>
               ) : (
                 <>
-                  {total} <span style={{ fontSize: 18, color: "var(--muted2)" }}>XLM</span>
+                  {total} <span className="unit">XLM</span>
                 </>
               )}
             </div>
 
             {Boolean(balances.error) && (
-              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
-                <span role="alert" style={{ fontSize: 13, color: "var(--negative)" }}>
+              <div className="mt-3 flex items-center gap-3">
+                <span role="alert" className="lpa-bad text-[13px]">
                   Couldn&apos;t load balances.
                 </span>
-                <button
-                  onClick={() => void balances.refetch()}
-                  className="neo-btn"
-                  style={{ padding: "6px 14px", fontSize: 13 }}
-                >
+                <LpActionButton variant="outline" size="sm" onClick={() => void balances.refetch()}>
                   Retry
-                </button>
+                </LpActionButton>
               </div>
             )}
 
-            <dl style={{ marginTop: 24, display: "flex", flexDirection: "column" }}>
+            <dl className="lpa-detail mt-6">
               <DetailRow label="Account name" value={session?.accountId.slice(-8) ?? ""} />
               <DetailRow
                 label="Public key"
@@ -115,82 +98,50 @@ export default function Dashboard() {
                 mono
               />
               <DetailRow label="Network" value={session?.network ?? ""} />
-              <DetailRow label="Auth method" value="Passkey" last />
+              <DetailRow label="Auth method" value="Passkey" />
             </dl>
           </section>
 
           {/* My assets */}
-          <section className="neo" style={{ padding: 24, minHeight: 260 }}>
-            <span className="eyebrow">My assets</span>
+          <section className="lpa-panel min-h-[260px]">
+            <Eyebrow>My assets</Eyebrow>
             {balances.isPending && (
-              <p
-                className="animate-pulse"
-                style={{ marginTop: 14, fontSize: 14, color: "var(--muted2)" }}
-              >
-                Loading…
-              </p>
+              <p className="mt-3.5! animate-pulse text-sm text-[var(--lp-ink-faint)]">Loading…</p>
             )}
             {balances.data?.length ? (
-              <div style={{ marginTop: 6 }}>
+              <div className="mt-1.5">
                 {balances.data.map((b) => (
-                  <div key={b.contractId} className="tokrow">
+                  <div key={b.contractId} className="lpa-tokrow">
                     <div className="ti"></div>
                     <div className="tn">
                       <b>{b.symbol === "XLM" ? "Stellar Lumens" : b.symbol}</b>
                       <span>{b.symbol}</span>
                     </div>
                     <div className="tv">
-                      <b className="display" style={{ fontSize: 16 }}>
-                        {formatTokenAmount(b.amount, b.decimals)}
-                      </b>
+                      <b className="lpa-amt text-base">{formatTokenAmount(b.amount, b.decimals)}</b>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
               !balances.isPending && (
-                <div
-                  style={{
-                    marginTop: 24,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 12,
-                    color: "var(--muted2)",
-                  }}
-                >
-                  <div
-                    className="neo-inset"
-                    style={{ width: 72, height: 72, borderRadius: "50%" }}
-                  />
-                  <p style={{ fontSize: 14 }}>No assets yet</p>
-                  <button
-                    onClick={() => setPanel("receive")}
-                    className="neo-btn"
-                    style={{ padding: "8px 18px", fontSize: 13, fontWeight: 700 }}
-                  >
+                <div className="lpa-empty mt-6">
+                  <div className="ph" />
+                  <p className="text-sm!">No assets yet</p>
+                  <LpActionButton variant="outline" size="sm" onClick={() => setPanel("receive")}>
                     Receive assets
-                  </button>
+                  </LpActionButton>
                 </div>
               )
             )}
           </section>
 
           {/* Activity */}
-          <section className="neo" style={{ padding: 24, minHeight: 260 }}>
-            <span className="eyebrow">Activity</span>
-            <div
-              style={{
-                marginTop: 24,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 12,
-                color: "var(--muted2)",
-              }}
-            >
-              <div className="neo-inset" style={{ width: 72, height: 72, borderRadius: "50%" }} />
-              <p style={{ fontSize: 14, textAlign: "center", maxWidth: 200 }}>
+          <section className="lpa-panel min-h-[260px]">
+            <Eyebrow>Activity</Eyebrow>
+            <div className="lpa-empty mt-6">
+              <div className="ph" />
+              <p className="max-w-[200px] text-sm!">
                 Transaction history arrives with a later wallet-core slice.
               </p>
             </div>
@@ -201,33 +152,11 @@ export default function Dashboard() {
   );
 }
 
-function DetailRow({
-  label,
-  value,
-  mono,
-  last,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-  last?: boolean;
-}) {
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 16,
-        padding: "12px 0",
-        borderBottom: last ? "none" : "1px solid var(--line)",
-        fontSize: 14,
-      }}
-    >
-      <dt style={{ color: "var(--muted2)" }}>{label}</dt>
-      <dd
-        className={mono ? "mono" : undefined}
-        style={{ textTransform: mono ? "none" : "capitalize" }}
-      >
+    <div className="lpa-detail-row">
+      <dt>{label}</dt>
+      <dd className={mono ? "font-[family-name:var(--lp-mono)] text-[13px]" : "capitalize"}>
         {value}
       </dd>
     </div>
