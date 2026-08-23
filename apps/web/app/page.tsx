@@ -2,6 +2,7 @@ import { LpShell } from "./landing/shell";
 import { Hero } from "./landing/hero";
 import { X402Pillars } from "./landing/pillars";
 import { TraceSection } from "./landing/trace";
+import { Playground } from "./landing/playground";
 import { EverydayRail } from "./landing/everyday";
 import { Platforms } from "./landing/platforms";
 import { ExtensionSteps } from "./landing/steps";
@@ -19,6 +20,7 @@ export default function Landing() {
       <Hero />
       <X402Pillars />
       <TraceSection />
+      <Playground />
       <EverydayRail />
       <Platforms />
       <ExtensionSteps />
