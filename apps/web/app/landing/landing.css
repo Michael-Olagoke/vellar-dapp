@@ -797,6 +797,47 @@
   line-height: 1.6;
 }
 
+/* ---- Playground — live testnet labs ---------------------------- */
+
+.lp .lp-play {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: var(--lp-sp-12);
+  align-items: center;
+}
+.lp .lp-playgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--lp-sp-4);
+}
+.lp .lp-playcard {
+  padding: var(--lp-sp-6);
+  clip-path: var(--lp-clip-br-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lp-sp-2);
+}
+.lp .lp-playcard--mint {
+  background: var(--lp-mint-soft);
+}
+.lp .lp-playcard--coral {
+  background: var(--lp-coral-soft);
+}
+.lp .lp-playcard--lime {
+  background: var(--lp-lime-soft);
+}
+.lp .lp-playcard--sun {
+  background: var(--lp-sun-soft);
+}
+.lp .lp-playcard p {
+  color: var(--lp-ink-soft);
+  font-size: var(--lp-fs-sm);
+  line-height: 1.6;
+}
+.lp .lp-play + .lp-cta-row {
+  margin-top: var(--lp-sp-12);
+}
+
 /* ---- Everyday actions — spread accordion ----------------------
    One row of slats; exactly one expanded at a time. The width change is
    flex-grow ONLY (every slat has flex-basis 0, so siblings absorb the
@@ -1681,6 +1722,10 @@
   .lp .lp-trace-pin {
     min-height: 0;
   }
+  .lp .lp-play {
+    grid-template-columns: 1fr;
+    gap: var(--lp-sp-8);
+  }
 }
 
 @media (max-width: 700px) {
@@ -1691,6 +1736,12 @@
     grid-template-columns: 1fr;
   }
   /* Two-up compact grids — the mobile pattern for stacked card sections */
+  .lp .lp-playgrid {
+    gap: var(--lp-sp-3);
+  }
+  .lp .lp-playcard {
+    padding: var(--lp-sp-4);
+  }
   .lp .lp-hero-cards {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--lp-sp-4) var(--lp-sp-3);
