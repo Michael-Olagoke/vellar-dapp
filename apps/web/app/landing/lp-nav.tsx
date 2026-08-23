@@ -2,27 +2,46 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { scrollToSection, useScrollSpy } from "./use-scroll-spy";
 
 /** Landing sections the nav tracks for scroll-spy highlighting. */
 const SECTIONS = [
   { id: "agents", label: "x402" },
   { id: "wallet", label: "Wallet" },
-  { id: "faq", label: "FAQ" },
 ] as const;
 
 const SECTION_IDS = SECTIONS.map((s) => s.id);
 
+/** Developer surfaces, grouped under one dropdown so the bar stays short. */
+const DEV_LINKS = [
+  { href: "https://docs.vellar.xyz/", label: "Docs" },
+  { href: "https://playground.vellar.xyz/", label: "Playground" },
+  { href: "https://explorer.vellar.xyz/", label: "Explorer" },
+] as const;
+
 /** Sticky paper nav for all .lp marketing pages. */
 export function LpNav() {
   const [open, setOpen] = useState(false);
-  const close = () => setOpen(false);
+  const [devOpen, setDevOpen] = useState(false);
+  const close = () => {
+    setOpen(false);
+    setDevOpen(false);
+  };
   // usePathname (not window.location read once on mount): the nav lives in the
   // shared layout, so client-side navigation must re-derive the active link.
   const path = usePathname() ?? "";
   const onLanding = path === "/";
   const section = useScrollSpy(SECTION_IDS, onLanding);
+
+  useEffect(() => {
+    if (!devOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDevOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [devOpen]);
 
   const goTo = (id: string) => (e: React.MouseEvent) => {
     close();
@@ -49,18 +68,43 @@ export function LpNav() {
               {s.label}
             </Link>
           ))}
+          <div
+            className={`lp-nav-dd${devOpen ? " open" : ""}`}
+            onMouseEnter={() => setDevOpen(true)}
+            onMouseLeave={() => setDevOpen(false)}
+          >
+            <button
+              type="button"
+              className="lp-nav-dd-btn"
+              aria-haspopup="true"
+              aria-expanded={devOpen}
+              onClick={() => setDevOpen(!devOpen)}
+            >
+              Developers
+              <svg
+                width="10"
+                height="6"
+                viewBox="0 0 10 6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M1 1l4 4 4-4" />
+              </svg>
+            </button>
+            <div className="lp-nav-dd-panel">
+              <div className="lp-nav-dd-card">
+                {DEV_LINKS.map((l) => (
+                  <a key={l.href} href={l.href} onClick={close}>
+                    {l.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
           <Link href="/about" className={path === "/about" ? "active" : ""} onClick={close}>
             About
           </Link>
-          <a href="https://docs.vellar.xyz/" onClick={close}>
-            Docs
-          </a>
-          <a href="https://explorer.vellar.xyz/" onClick={close}>
-            Explorer
-          </a>
-          <a href="https://playground.vellar.xyz/" onClick={close}>
-            Playground
-          </a>
         </div>
         <Link href="/app" className="lp-btn lp-btn--forest">
           Launch app
