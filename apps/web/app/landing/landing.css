@@ -461,6 +461,84 @@
   display: block;
 }
 
+/* Developers dropdown — hover or click to open, Escape closes. The panel
+   is a cut-corner paper card (two-layer clip border); its wrapper carries
+   a transparent top bridge so the pointer can cross the gap without the
+   wrapper firing mouseleave. */
+.lp .lp-nav-dd {
+  position: relative;
+}
+.lp .lp-nav-dd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--lp-ink);
+  font-family: inherit;
+  font-size: var(--lp-fs-sm);
+  font-weight: 600;
+  padding: 4px 0;
+  border-bottom: 3px solid transparent;
+  transition: border-color var(--lp-dur-fast) ease;
+}
+.lp .lp-nav-dd:hover .lp-nav-dd-btn,
+.lp .lp-nav-dd.open .lp-nav-dd-btn {
+  border-bottom-color: var(--lp-sun);
+}
+.lp .lp-nav-dd-btn svg {
+  transition: rotate var(--lp-dur-fast) ease;
+}
+.lp .lp-nav-dd.open .lp-nav-dd-btn svg {
+  rotate: 180deg;
+}
+.lp .lp-nav-dd-panel {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% 0;
+  padding-top: 10px;
+  display: none;
+  z-index: 41;
+}
+.lp .lp-nav-dd.open .lp-nav-dd-panel {
+  display: block;
+}
+.lp .lp-nav-dd-card {
+  position: relative;
+  min-width: 190px;
+  background: var(--lp-line-strong);
+  clip-path: var(--lp-clip-br-sm);
+  padding: var(--lp-sp-2);
+  display: flex;
+  flex-direction: column;
+}
+.lp .lp-nav-dd-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--lp-paper);
+  clip-path: polygon(
+    1px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 12.41px),
+    calc(100% - 12.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
+}
+.lp .lp-nav-links .lp-nav-dd-card a {
+  display: block;
+  padding: 10px 14px;
+  border-bottom: none;
+  transition: background var(--lp-dur-fast) ease;
+}
+.lp .lp-nav-links .lp-nav-dd-card a:hover {
+  border-bottom: none;
+  background: var(--lp-mint-soft);
+}
+
 @media (max-width: 820px) {
   .lp .lp-nav {
     height: 64px;
@@ -490,6 +568,28 @@
     font-size: 2rem;
     font-weight: 700;
     border-bottom-width: 4px;
+  }
+  /* In the full-screen menu the dropdown flattens into plain links — the
+     wrappers dissolve (display: contents) and the button disappears. */
+  .lp .lp-nav-dd,
+  .lp .lp-nav-dd-panel,
+  .lp .lp-nav-dd-card {
+    display: contents;
+  }
+  .lp .lp-nav-dd-btn {
+    display: none;
+  }
+  .lp .lp-nav-dd-card::before {
+    content: none;
+  }
+  .lp .lp-nav-links .lp-nav-dd-card a,
+  .lp .lp-nav-links .lp-nav-dd-card a:hover {
+    padding: 4px 0;
+    background: none;
+    border-bottom: 4px solid transparent;
+  }
+  .lp .lp-nav-links .lp-nav-dd-card a:hover {
+    border-bottom-color: var(--lp-sun);
   }
 }
 
