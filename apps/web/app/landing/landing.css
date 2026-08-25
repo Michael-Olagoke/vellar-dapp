@@ -599,6 +599,22 @@
   padding-top: var(--lp-sp-xl);
   padding-bottom: var(--lp-sp-lg);
   position: relative;
+  isolation: isolate; /* keeps the waves' stacking context off the rest of the page */
+}
+/* Ambient hero background (see hero-waves.tsx) — sits behind the copy and
+   cards, fades out before the next section so it never reads as a page-wide
+   tint. Never present under prefers-reduced-motion (component doesn't mount). */
+.lp .lp-hero-waves {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, black 0%, black 78%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 78%, transparent 100%);
+}
+.lp .lp-hero > .lp-wrap {
+  position: relative;
+  z-index: 1;
 }
 .lp .lp-hero h1 {
   max-width: 13ch;
