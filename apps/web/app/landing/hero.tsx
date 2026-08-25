@@ -1,4 +1,5 @@
 import { Chips, Field, Frame, LpButton, MonoRow, MonoRows, TokenPill } from "./ui";
+import { HeroWaves } from "./hero-waves";
 
 const BAZAAR = [
   { name: "Weather API", meta: "0.05 USDC · verified" },
@@ -11,6 +12,7 @@ const BAZAAR = [
 export function Hero() {
   return (
     <header className="lp-hero">
+      <HeroWaves />
       <div className="lp-wrap">
         <h1 data-split>
           Give your agent a budget, <em>not your keys.</em>

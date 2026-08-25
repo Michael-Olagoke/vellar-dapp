@@ -599,6 +599,24 @@
   padding-top: var(--lp-sp-xl);
   padding-bottom: var(--lp-sp-lg);
   position: relative;
+  overflow: hidden;
+  /* Scopes z-index stacking to the hero: without this, the waves' z-index:0
+     sits in the SAME stacking context as .lp-frame's z-index:-1 offset
+     outlines, so the outline (meant to sit just behind its own card) instead
+     drops behind the waves entirely and its overhang disappears. */
+  isolation: isolate;
+}
+/* GradientWaves as the hero's full-bleed background (see hero-waves.tsx),
+   sitting behind everything in the section. */
+.lp .lp-hero-waves {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.lp .lp-hero > .lp-wrap {
+  position: relative;
+  z-index: 1;
 }
 .lp .lp-hero h1 {
   max-width: 13ch;
