@@ -30,9 +30,9 @@ export function HeroWaves() {
       swell={31.5}
       turbulence={40.5}
       tilt={1.11}
-      zoom={1.05}
-      height={4.4}
-      fogDepth={17}
+      zoom={1.3}
+      height={2.6}
+      fogDepth={26}
       detail="medium"
       brightness={1.1}
       opacity={1}
