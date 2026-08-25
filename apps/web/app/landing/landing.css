@@ -599,18 +599,15 @@
   padding-top: var(--lp-sp-xl);
   padding-bottom: var(--lp-sp-lg);
   position: relative;
-  isolation: isolate; /* keeps the waves' stacking context off the rest of the page */
+  overflow: hidden;
 }
-/* Ambient hero background (see hero-waves.tsx) — sits behind the copy and
-   cards, fades out before the next section so it never reads as a page-wide
-   tint. Never present under prefers-reduced-motion (component doesn't mount). */
+/* GradientWaves as the hero's full-bleed background (see hero-waves.tsx),
+   sitting behind everything in the section. */
 .lp .lp-hero-waves {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  mask-image: linear-gradient(to bottom, black 0%, black 78%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 78%, transparent 100%);
 }
 .lp .lp-hero > .lp-wrap {
   position: relative;
