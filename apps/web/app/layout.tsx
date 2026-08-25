@@ -6,20 +6,30 @@ import "./globals.css";
 const title = "Vellar, the agent-payments stack for Stellar, built on x402";
 const description =
   "Give your agent a budget, not your keys. Smart accounts that pay x402 APIs autonomously, with budgets enforced on-chain, on a passkey smart wallet with programmable policies and contract trust signals. No seed phrases.";
+// The hero itself, cropped to the canonical 1200x630 social-card size.
+const ogImage = {
+  url: "https://vellar.xyz/og-image.png",
+  width: 1200,
+  height: 630,
+  alt: title,
+};
 
 export const metadata: Metadata = {
   title,
   description,
+  metadataBase: new URL("https://vellar.xyz"),
   openGraph: {
     title,
     description,
     siteName: "Vellar",
     type: "website",
+    images: [ogImage],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title,
     description,
+    images: [ogImage.url],
   },
 };
 
