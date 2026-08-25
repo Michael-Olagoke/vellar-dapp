@@ -24,7 +24,7 @@ export function HeroWaves() {
       waveColor="#c8f048"
       crestColor="#ffc94a"
       speed={0.4}
-      amplitude={2.3}
+      amplitude={2.8}
       waveScale={0.75}
       waveRatio={0.8}
       swell={31.5}
@@ -32,9 +32,9 @@ export function HeroWaves() {
       tilt={1.11}
       zoom={1.05}
       height={4.4}
-      fogDepth={13}
+      fogDepth={17}
       detail="medium"
-      brightness={0.85}
+      brightness={1.1}
       opacity={1}
       mouseInteraction
       parallaxStrength={0.31}
