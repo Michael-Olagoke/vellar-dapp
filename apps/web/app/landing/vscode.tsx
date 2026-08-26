@@ -1,6 +1,7 @@
 import { Chips, LpButton, SectionHead } from "./ui";
 
-const MARKETPLACE_URL = "https://marketplace.visualstudio.com/items?itemName=VellarWallet.vellar-x402";
+const MARKETPLACE_URL =
+  "https://marketplace.visualstudio.com/items?itemName=VellarWallet.vellar-x402";
 
 /** "VS Code extension" — gate an endpoint with x402 without leaving the editor. */
 export function VsCodeExtension() {

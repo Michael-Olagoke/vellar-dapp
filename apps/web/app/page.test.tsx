@@ -18,9 +18,7 @@ describe("Landing", () => {
       expect(link.getAttribute("href")).toBe("/app");
     }
 
-    expect(
-      screen.getByRole("link", { name: /get the extension/i }),
-    ).toBeDefined();
+    expect(screen.getByRole("link", { name: /get the extension/i })).toBeDefined();
     expect(screen.getByText(/frequently asked questions/i)).toBeDefined();
   });
 });
