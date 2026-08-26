@@ -101,8 +101,8 @@ export default function About() {
                 <LpButton href="https://github.com/Vellar-Wallet" variant="forest">
                   GitHub
                 </LpButton>
-                <LpButton href="mailto:hello@vellar.xyz" variant="outline">
-                  hello@vellar.xyz
+                <LpButton href="mailto:david@vellar.xyz" variant="outline">
+                  david@vellar.xyz
                 </LpButton>
               </div>
             </div>
