@@ -113,6 +113,15 @@
     calc(100% - 28.83px) calc(100% - 2px),
     2px calc(100% - 2px)
   );
+  /* tl-lg inset by a 1px border (same 44px cut, top-left corner, mirrored
+     from the br-md derivation above). */
+  --lp-clip-tl-lg-in1: polygon(
+    1px 44.41px,
+    44.41px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
   /* 2px outline frames (offset behind cards — the depth system) */
   --lp-frame-tl-md: polygon(
     0 28px,
@@ -1386,164 +1395,83 @@
   line-height: 1.6;
 }
 
-/* ---- Wallet services — bento grid -----------------------------
-   Asymmetric named-area layout: a 2×2 passkey anchor, two wide tinted
-   tiles, single white tiles, and a dark SDK tile with a live code row.
-   One system (cut corners, soft tints, hairline borders), real shape. */
+/* ---- VS Code extension ----------------------------------------
+   Two-column: copy + CTA on the left, a real Marketplace screenshot
+   framed in a minimal browser-chrome card on the right. Same
+   diagonal-cut border technique as every other card in the system;
+   the "chrome" is just a dot row above the image, inside the cut. */
 
-.lp .lp-bento {
+.lp .lp-vscode {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-areas:
-    "passkey passkey policies policies"
-    "passkey passkey verify trust"
-    "swaps fees cleanup cleanup"
-    "custody sdk sdk sdk";
-  gap: var(--lp-sp-4);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--lp-sp-12);
+  align-items: center;
 }
-.lp .lp-tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--lp-sp-3);
-  padding: var(--lp-sp-6);
-  background: var(--lp-line-strong); /* the 1px border */
-  clip-path: var(--lp-clip-br-md);
-}
-.lp .lp-tile::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: var(--tile-fill, var(--lp-paper));
-  clip-path: var(--lp-clip-br-md-in1);
-}
-.lp .lp-tile p {
+.lp .lp-vscode-copy p {
   color: var(--lp-ink-soft);
-  font-size: var(--lp-fs-sm);
+  font-size: var(--lp-fs-lead);
   line-height: 1.6;
+  max-width: 46ch;
 }
-.lp .lp-tile .ico {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
-  background: var(--tile-chip, var(--lp-mint-soft));
-  color: var(--lp-ink);
+.lp .lp-vscode-copy .lp-chips {
+  margin-top: var(--lp-sp-2);
 }
-/* placement + tones */
-.lp .lp-tile--passkey {
-  grid-area: passkey;
-  --tile-fill: var(--lp-mint-soft);
-  --tile-chip: var(--lp-paper);
+.lp .lp-vscode-copy .lp-cta-row {
+  margin-top: var(--lp-sp-6);
 }
-.lp .lp-tile--passkey h4 {
-  font-size: 1.5rem;
-  letter-spacing: -0.015em;
-}
-.lp .lp-tile--passkey p {
-  max-width: 40ch;
-}
-.lp .lp-tile--passkey .lp-field {
-  margin-top: auto;
-  max-width: 400px;
-  --field-fill: var(--lp-paper);
-  --field-border: transparent;
-}
-.lp .lp-tile--policies {
-  grid-area: policies;
-  --tile-fill: var(--lp-sun-soft);
-  --tile-chip: var(--lp-paper);
-}
-.lp .lp-tile--verify {
-  grid-area: verify;
-  --tile-chip: var(--lp-lime-soft);
-}
-.lp .lp-tile--trust {
-  grid-area: trust;
-  --tile-chip: var(--lp-coral-soft);
-}
-.lp .lp-tile--swaps {
-  grid-area: swaps;
-  --tile-fill: var(--lp-lime-soft);
-  --tile-chip: var(--lp-paper);
-}
-.lp .lp-tile--fees {
-  grid-area: fees;
-  --tile-chip: var(--lp-sun-soft);
-}
-.lp .lp-tile--cleanup {
-  grid-area: cleanup;
-  --tile-chip: var(--lp-mint-soft);
-}
-.lp .lp-tile--cleanup p {
-  max-width: 62ch;
-}
-.lp .lp-tile--custody {
-  grid-area: custody;
-  --tile-chip: var(--lp-lime-soft);
-}
-/* chips on tinted tiles read as paper tokens */
-.lp .lp-tile--passkey .lp-chips b,
-.lp .lp-tile--policies .lp-chips b {
-  background: var(--lp-paper);
-  border-color: transparent;
-}
-/* the dark SDK tile — borderless: solid ink, no inner fill layer */
-.lp .lp-tile--sdk {
-  grid-area: sdk;
-  background: var(--lp-ink);
-  color: var(--lp-on-dark);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  grid-template-rows: auto auto 1fr;
-  gap: var(--lp-sp-3) var(--lp-sp-8);
-  align-items: start;
-  --tile-chip: rgba(255, 255, 255, 0.12);
-}
-.lp .lp-tile--sdk::before {
-  display: none;
-}
-.lp .lp-tile--sdk .ico {
-  color: var(--lp-on-dark);
-}
-.lp .lp-tile--sdk p {
-  color: var(--lp-on-dark-soft);
-}
-.lp .lp-tile--sdk .tcode {
-  grid-column: 2;
-  grid-row: 1 / 4;
-  align-self: center;
-  width: 100%;
+.lp .lp-vsshot {
   position: relative;
-  border: 0;
-  background: var(--lp-line-dark); /* the 1px border */
-  clip-path: var(--lp-clip-br-sm);
-  padding: var(--lp-sp-4);
+  display: block;
+  background: var(--lp-line-strong); /* the 1px border */
+  clip-path: var(--lp-clip-tl-lg);
+  padding: 2px;
+  /* `scale`/`rotate`, not `transform`: the reveal system (motion.tsx)
+     tweens this element's `transform` on scroll-in via GSAP, writing a
+     fresh inline value every frame. A `transition: transform` here would
+     fight that every frame and the element would never visibly settle.
+     `scale` and `rotate` are their own independent CSS properties GSAP's
+     reveal never touches, so the hover effect and the scroll reveal
+     can't collide.
+     GSAP also leaves stale inline `scale: none` / `rotate: none` on the
+     element after its (unrelated) tween completes — inline styles beat
+     stylesheet rules regardless of specificity, so the hover/focus rule
+     below needs !important to still take effect once those are present. */
+  transition:
+    scale var(--lp-dur-fast) var(--lp-ease-rise),
+    rotate var(--lp-dur-fast) var(--lp-ease-rise);
+  scale: 1;
+  rotate: 0deg;
 }
-.lp .lp-tile--sdk .tcode::before {
+.lp .lp-vsshot::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: color-mix(in srgb, var(--lp-on-dark) 5%, var(--lp-ink));
-  clip-path: polygon(
-    1px 1px,
-    calc(100% - 1px) 1px,
-    calc(100% - 1px) calc(100% - 12.41px),
-    calc(100% - 12.41px) calc(100% - 1px),
-    1px calc(100% - 1px)
-  );
+  background: var(--lp-ink);
+  clip-path: var(--lp-clip-tl-lg-in1);
 }
-.lp .lp-tile--sdk .tcode .lp-mrow {
-  border-color: var(--lp-line-dark);
+.lp .lp-vsshot:hover,
+.lp .lp-vsshot:focus-visible {
+  scale: 1.035 !important;
+  rotate: 2deg !important;
 }
-.lp .lp-tile--sdk .tcode .lp-mrow span {
-  color: var(--lp-on-dark-soft);
+.lp .lp-vsshot-chrome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--lp-sp-3) var(--lp-sp-4);
 }
-.lp .lp-tile--sdk .tcode .lp-mrow b.ok {
-  color: var(--lp-mint);
+.lp .lp-vsshot-chrome i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--lp-line-dark);
+  display: block;
+}
+.lp .lp-vsshot img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 /* ---- FAQ ------------------------------------------------------ */
@@ -1819,20 +1747,6 @@
   .lp .lp-steps {
     grid-template-columns: 1fr 1fr;
   }
-  .lp .lp-bento {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "passkey passkey"
-      "policies policies"
-      "verify trust"
-      "swaps fees"
-      "cleanup cleanup"
-      "custody custody"
-      "sdk sdk";
-  }
-  .lp .lp-tile--sdk {
-    display: flex;
-  }
   .lp .lp-trace-grid {
     grid-template-columns: 1fr;
     gap: var(--lp-sp-8);
@@ -1850,6 +1764,7 @@
   .lp .lp-sechead,
   .lp .lp-faq-grid,
   .lp .lp-plat,
+  .lp .lp-vscode,
   .lp .lp-foot-top {
     grid-template-columns: 1fr;
   }
@@ -1932,31 +1847,6 @@
   .lp .lp-step p {
     font-size: 0.8125rem;
   }
-  .lp .lp-bento {
-    grid-template-columns: 1fr 1fr;
-    gap: var(--lp-sp-3);
-    grid-template-areas:
-      "passkey passkey"
-      "policies policies"
-      "swaps fees"
-      "verify trust"
-      "cleanup cleanup"
-      "custody custody"
-      "sdk sdk";
-  }
-  .lp .lp-tile p {
-    font-size: 0.8125rem;
-  }
-  .lp .lp-tile .ico {
-    width: 36px;
-    height: 36px;
-  }
-  .lp .lp-tile--passkey .lp-field {
-    display: none;
-  }
-  .lp .lp-tile--passkey h4 {
-    font-size: 1.1875rem;
-  }
   .lp .lp-foot-cols {
     grid-template-columns: 1fr 1fr;
   }
@@ -1969,9 +1859,6 @@
   }
   .lp .lp-cta {
     padding-block: var(--lp-sp-xl);
-  }
-  .lp .lp-tile {
-    padding: var(--lp-sp-4);
   }
   .lp .lp-hero-cards {
     margin-top: var(--lp-sp-lg);
