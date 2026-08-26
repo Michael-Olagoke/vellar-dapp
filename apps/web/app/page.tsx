@@ -6,7 +6,7 @@ import { Playground } from "./landing/playground";
 import { EverydayRail } from "./landing/everyday";
 import { Platforms } from "./landing/platforms";
 import { ExtensionSteps } from "./landing/steps";
-import { WalletServices } from "./landing/bento";
+import { VsCodeExtension } from "./landing/vscode";
 import { FaqSection } from "./landing/faq";
 import { SdkCta } from "./landing/cta";
 
@@ -24,7 +24,7 @@ export default function Landing() {
       <EverydayRail />
       <Platforms />
       <ExtensionSteps />
-      <WalletServices />
+      <VsCodeExtension />
       <FaqSection />
       <SdkCta />
     </LpShell>
