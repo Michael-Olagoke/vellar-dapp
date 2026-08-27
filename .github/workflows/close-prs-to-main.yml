@@ -1,0 +1,53 @@
+name: Close PRs to main (contributions go to dev)
+
+# Contributions are not accepted on `main`. Any PR opened against `main` by
+# someone other than the maintainer (davedumto) is commented on (tagging the
+# author) and closed, with a redirect to the `dev` branch.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  guard-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (pr.state === "closed") return;
+
+            // The maintainer is allowed to open PRs directly to main.
+            const MAINTAINER = "davedumto";
+            if (pr.user.login === MAINTAINER) return;
+
+            const author = pr.user.login;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: [
+                `Hi @${author} — thanks for the contribution!`,
+                "",
+                "We do **not** accept pull requests to the `main` branch. All contributions go to the **`dev`** branch instead, so I'm closing this PR.",
+                "",
+                "Please reopen your PR with `dev` as the base branch:",
+                "",
+                "1. Rebase or retarget your branch onto `dev`.",
+                `2. Open a new PR against \`dev\` here: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/dev...${author}:${pr.head.ref}`,
+                "",
+                "Thanks for understanding, and looking forward to your PR on `dev`! 🙏",
+              ].join("\n"),
+            });
+
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              state: "closed",
+            });
