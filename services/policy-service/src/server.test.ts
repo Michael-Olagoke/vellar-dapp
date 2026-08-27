@@ -706,3 +706,107 @@ describe("POST /policies/:id/simulate", () => {
     expect(res.statusCode).toBe(422);
   });
 });
+
+describe("CSRF protection for admin endpoints (Issue #311)", () => {
+  it("generates a valid CSRF token from the token endpoint", async () => {
+    const server = build();
+    const res = await server.inject({ method: "GET", url: "/admin/csrf-token" });
+    expect(res.statusCode).toBe(200);
+    const { csrfToken } = res.json();
+    expect(csrfToken).toBeDefined();
+    expect(typeof csrfToken).toBe("string");
+    expect(csrfToken.split(".")).toHaveLength(3);
+  });
+
+  it("rejects state-changing admin request when CSRF token is missing (403)", async () => {
+    const server = build();
+    const res = await server.inject({
+      method: "POST",
+      url: "/admin/policies/generate",
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("csrf_token_missing");
+  });
+
+  it("rejects state-changing admin request when CSRF token is invalid/tampered (403)", async () => {
+    const server = build();
+    const res = await server.inject({
+      method: "POST",
+      url: "/admin/policies/generate",
+      headers: { "x-csrf-token": "bad.token.signature" },
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("csrf_token_invalid");
+  });
+
+  it("rejects state-changing admin request when CSRF token is expired (403)", async () => {
+    const secret = "test-custom-secret";
+    // Build server with 1ms TTL
+    const app = buildServer({ csrfSecret: secret, csrfTtlMs: 1 });
+    const tokenRes = await app.inject({ method: "GET", url: "/admin/csrf-token" });
+    const { csrfToken } = tokenRes.json();
+
+    // Sleep 10ms so token expires
+    await new Promise((r) => setTimeout(r, 10));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/policies/generate",
+      headers: { "x-csrf-token": csrfToken },
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("csrf_token_invalid");
+    expect(res.json().reason).toBe("expired");
+    await app.close();
+  });
+
+  it("accepts state-changing admin request with a valid CSRF token (201)", async () => {
+    const server = build();
+    const tokenRes = await server.inject({ method: "GET", url: "/admin/csrf-token" });
+    const { csrfToken } = tokenRes.json();
+
+    const res = await server.inject({
+      method: "POST",
+      url: "/admin/policies/generate",
+      headers: { "x-csrf-token": csrfToken },
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().policy).toBeDefined();
+    expect(res.json().policy.status).toBe("generated");
+  });
+
+  it("permits safe read requests without requiring a CSRF token", async () => {
+    const server = build();
+    const res = await server.inject({ method: "GET", url: "/policies/templates" });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("enforces CSRF across all mutation endpoints when enableCsrf is true", async () => {
+    const app = buildServer({ enableCsrf: true });
+    // Without token -> 403
+    const blocked = await app.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    expect(blocked.statusCode).toBe(403);
+
+    // With token -> 201
+    const tokenRes = await app.inject({ method: "GET", url: "/csrf-token" });
+    const { csrfToken } = tokenRes.json();
+
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/policies/generate",
+      headers: { "x-csrf-token": csrfToken },
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    expect(allowed.statusCode).toBe(201);
+    await app.close();
+  });
+});
+

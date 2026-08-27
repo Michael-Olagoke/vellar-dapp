@@ -30,20 +30,27 @@ scraper can watch it. In the `all-in-one` process, scrape the gateway's
   labelled by **pattern** (`/wallet/session/:id`), never the raw path, so path
   params don't blow up cardinality.
 
-**Domain (idea.md §13), `_total` counters split by `outcome="success|failure"`:**
+**Standardized Metrics Naming Convention (Issue #300):**
+All custom application metrics adhere to `vela_<subsystem>_<metric_name>_<unit_or_type>`:
+- `<subsystem>`: identifies service component (`http`, `wallet`, `policy`, `worker`, `lifecycle`, `rpc`).
+- `<metric_name>`: snake_case identifier (`created`, `passkey_auth`, `poison_messages`, etc.).
+- `<unit_or_type>`: `_total` (counters), `_seconds` (durations/turnaround), `_depth` (queue sizes), `_lag_seconds` (processing lag).
 
-| Metric                                 | Emitted by        | §13 line                          |
-| -------------------------------------- | ----------------- | --------------------------------- |
-| `vela_wallet_created_total`            | wallet-service    | wallet creation success rate      |
-| `vela_passkey_auth_total`              | wallet-service    | passkey auth success/failure rate |
-| `vela_tx_signed_total`                 | wallet-service    | tx signing completion rate        |
-| `vela_policy_deployed_total`           | policy-service    | policy generation/deploy rate     |
-| `vela_verification_total`              | worker-service    | (verification outcomes)           |
-| `vela_verification_turnaround_seconds` | worker-service    | verification turnaround (hist.)   |
-| `vela_cleanup_completed_total`         | lifecycle-service | cleanup completion rate           |
-| `vela_rpc_errors_total{upstream}`      | wallet + worker   | RPC degradation / worker failures |
-| `vela_worker_queue_depth`              | worker-service    | queue depth (pending jobs)        |
-| `vela_worker_processing_lag_seconds`  | worker-service    | submit-to-pickup processing lag   |
+**Domain Metrics, `_total` counters split by `outcome="success|failure"`:**
+
+| Metric                                        | Emitted by        | §13 line / Subsystem              |
+| --------------------------------------------- | ----------------- | --------------------------------- |
+| `vela_wallet_created_total`                   | wallet-service    | wallet creation success rate      |
+| `vela_wallet_passkey_auth_total`             | wallet-service    | passkey auth success/failure rate |
+| `vela_wallet_tx_signed_total`                | wallet-service    | tx signing completion rate        |
+| `vela_policy_deployed_total`                  | policy-service    | policy generation/deploy rate     |
+| `vela_policy_poison_messages_total`           | policy-service    | event queue poison message count  |
+| `vela_worker_verification_total`              | worker-service    | verification outcomes             |
+| `vela_worker_verification_turnaround_seconds` | worker-service    | verification turnaround (hist.)   |
+| `vela_lifecycle_cleanup_completed_total`      | lifecycle-service | cleanup completion rate           |
+| `vela_rpc_errors_total{upstream}`             | wallet + worker   | RPC degradation / worker failures |
+| `vela_worker_queue_depth`                     | worker-service    | queue depth (pending jobs)        |
+| `vela_worker_processing_lag_seconds`         | worker-service    | submit-to-pickup processing lag   |
 
 A "rate" is computed in the query layer, e.g. success rate over 5m:
 
