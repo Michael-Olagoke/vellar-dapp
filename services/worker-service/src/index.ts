@@ -72,6 +72,12 @@ const metrics: WorkerMetrics = {
     // §13 alerting: verification worker failures.
     domainMetrics.rpcErrors.inc({ service: "worker-service", upstream: "build" });
   },
+  queueDepth(depth) {
+    domainMetrics.workerQueueDepth.set({ service: "worker-service" }, depth);
+  },
+  processingLag(lagSeconds) {
+    domainMetrics.workerProcessingLagSeconds.set({ service: "worker-service" }, lagSeconds);
+  },
 };
 
 // The worker is a background process, not an HTTP service — but it still exposes
@@ -128,6 +134,7 @@ const loop = startWorkerLoop({
   store,
   executor,
   resolver,
+  concurrencyLimit: config.concurrencyLimit,
   idleDelayMs: config.pollIdleMs,
   log,
   metrics,
