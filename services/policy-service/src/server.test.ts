@@ -73,6 +73,43 @@ describe("validateDefinition", () => {
     }
   });
 
+  it("accepts boundary values across all templates", () => {
+    for (const definition of [
+      // Minimum 1 stroop (0.0000001 XLM)
+      {
+        version: "1",
+        type: "spending_limit",
+        owners: [C1],
+        spendingLimits: { dailyXlm: "0.0000001", perTxXlm: "0.0000001" },
+      },
+      // perTxXlm exactly equals dailyXlm
+      {
+        version: "1",
+        type: "spending_limit",
+        owners: [C1],
+        spendingLimits: { dailyXlm: "100", perTxXlm: "100" },
+      },
+      // threshold exactly equals owners count
+      { version: "1", type: "multisig_threshold", owners: [G1, G2], threshold: 2 },
+      // timelock boundary: minimum delay of 1 second
+      {
+        version: "1",
+        type: "timelock",
+        owners: [C1],
+        timelocks: { adminActionDelaySeconds: 1 },
+      },
+      // timelock boundary: maximum delay of 365 days (31536000 seconds)
+      {
+        version: "1",
+        type: "timelock",
+        owners: [C1],
+        timelocks: { adminActionDelaySeconds: 31_536_000 },
+      },
+    ]) {
+      expect(validateDefinition(definition)).toEqual({ valid: true, errors: [] });
+    }
+  });
+
   it.each([
     ["unknown type", { version: "1", type: "yolo", owners: [G1] }, /unknown policy type/],
     [
@@ -81,19 +118,59 @@ describe("validateDefinition", () => {
       /threshold cannot exceed/,
     ],
     [
+      "threshold below 2",
+      { version: "1", type: "multisig_threshold", owners: [G1, G2], threshold: 1 },
+      /threshold must be at least 2/,
+    ],
+    [
+      "non-integer threshold",
+      { version: "1", type: "multisig_threshold", owners: [G1, G2], threshold: 2.5 },
+      /threshold must be an integer/,
+    ],
+    [
+      "duplicate owners in multisig",
+      { version: "1", type: "multisig_threshold", owners: [G1, G1], threshold: 2 },
+      /duplicate owners are not allowed/,
+    ],
+    [
       "single owner with two owners",
       { version: "1", type: "single_owner", owners: [G1, G2] },
-      /owners/,
+      /single_owner policy requires exactly one owner/,
     ],
     [
       "spending limit with no limits",
       { version: "1", type: "spending_limit", owners: [C1], spendingLimits: {} },
-      /dailyXlm/,
+      /set dailyXlm and\/or perTxXlm/,
     ],
     [
       "zero spending limit",
       { version: "1", type: "spending_limit", owners: [C1], spendingLimits: { dailyXlm: "0" } },
-      /positive/,
+      /at least 1 stroop/,
+    ],
+    [
+      "all zeroes decimal spending limit",
+      { version: "1", type: "spending_limit", owners: [C1], spendingLimits: { dailyXlm: "0.0000000" } },
+      /at least 1 stroop/,
+    ],
+    [
+      "sub-stroop precision exceeding 7 decimal places",
+      { version: "1", type: "spending_limit", owners: [C1], spendingLimits: { dailyXlm: "0.00000001" } },
+      /at most 7 decimal places/,
+    ],
+    [
+      "negative spending limit",
+      { version: "1", type: "spending_limit", owners: [C1], spendingLimits: { dailyXlm: "-5" } },
+      /valid decimal amount/,
+    ],
+    [
+      "non-numeric spending limit",
+      { version: "1", type: "spending_limit", owners: [C1], spendingLimits: { dailyXlm: "invalid" } },
+      /valid decimal amount/,
+    ],
+    [
+      "perTxXlm exceeds dailyXlm",
+      { version: "1", type: "spending_limit", owners: [C1], spendingLimits: { dailyXlm: "50", perTxXlm: "100" } },
+      /perTxXlm cannot exceed dailyXlm/,
     ],
     [
       "allowlist with G address",
@@ -101,9 +178,39 @@ describe("validateDefinition", () => {
       /contract address/,
     ],
     [
+      "allowlist with duplicate contracts",
+      { version: "1", type: "contract_allowlist", owners: [C1], allowlistedContracts: [C1, C1] },
+      /duplicate allowlisted contracts are not allowed/,
+    ],
+    [
+      "timelock with 0 delay",
+      { version: "1", type: "timelock", owners: [C1], timelocks: { adminActionDelaySeconds: 0 } },
+      /delay must be at least 1 second/,
+    ],
+    [
+      "timelock with negative delay",
+      { version: "1", type: "timelock", owners: [C1], timelocks: { adminActionDelaySeconds: -10 } },
+      /delay must be at least 1 second/,
+    ],
+    [
+      "timelock exceeding 365 days",
+      { version: "1", type: "timelock", owners: [C1], timelocks: { adminActionDelaySeconds: 31_536_001 } },
+      /delay cannot exceed 31,536,000 seconds/,
+    ],
+    [
+      "timelock with decimal delay",
+      { version: "1", type: "timelock", owners: [C1], timelocks: { adminActionDelaySeconds: 3600.5 } },
+      /delay must be an integer/,
+    ],
+    [
       "bad owner address",
       { version: "1", type: "single_owner", owners: ["nope"] },
       /Stellar address/,
+    ],
+    [
+      "unrecognized field rejected by strict schema",
+      { version: "1", type: "single_owner", owners: [C1], unexpectedField: "malicious" },
+      /Unrecognized key/,
     ],
   ])("rejects %s", (_label, definition, message) => {
     const result = validateDefinition(definition);
