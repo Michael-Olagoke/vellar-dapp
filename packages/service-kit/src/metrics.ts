@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   Counter,
+  Gauge,
   Histogram,
   Registry,
   collectDefaultMetrics,
@@ -84,6 +85,20 @@ export const domainMetrics = {
     help: "Time from verification submission to a terminal result",
     labelNames: ["service", "outcome"] as const,
     buckets: [1, 5, 15, 30, 60, 120, 300, 600, 1200],
+    registers: [registry],
+  }),
+  /** Backpressure: current count of pending/queued verification jobs. */
+  workerQueueDepth: new Gauge({
+    name: "vela_worker_queue_depth",
+    help: "Number of pending verification jobs in queue",
+    labelNames: ["service"] as const,
+    registers: [registry],
+  }),
+  /** Backpressure: lag in seconds from job submission to processing pickup. */
+  workerProcessingLagSeconds: new Gauge({
+    name: "vela_worker_processing_lag_seconds",
+    help: "Lag in seconds between job submission and processing pickup",
+    labelNames: ["service"] as const,
     registers: [registry],
   }),
 } as const;

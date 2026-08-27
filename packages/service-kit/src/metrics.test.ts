@@ -95,6 +95,19 @@ describe("domain metrics", () => {
     expect(res.body).toMatch(/vela_rpc_errors_total\{[^}]*upstream="relayer"[^}]*\}\s+1/);
     await app.close();
   });
+
+  it("worker queue depth and processing lag gauges track backpressure state", async () => {
+    const app = await appWithMetrics();
+    domainMetrics.workerQueueDepth.set({ service: "worker-service" }, 42);
+    domainMetrics.workerProcessingLagSeconds.set({ service: "worker-service" }, 3.5);
+
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    expect(res.body).toMatch(/vela_worker_queue_depth\{[^}]*service="worker-service"[^}]*\}\s+42/);
+    expect(res.body).toMatch(
+      /vela_worker_processing_lag_seconds\{[^}]*service="worker-service"[^}]*\}\s+3\.5/,
+    );
+    await app.close();
+  });
 });
 
 describe("logEvent", () => {
