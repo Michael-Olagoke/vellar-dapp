@@ -54,9 +54,10 @@ backend, and no sponsor material is ever sent to a client.
 
 Account policies (e.g. spending limits) are enforced **on-chain by a Soroban
 contract**, not by client-side checks. A spending-limit policy is a cumulative
-rolling-window allowance — not a per-transaction cap — because policy signatures
-are secretless (see [Policy Contract](./policy-contract.md) for why this
-distinction matters).
+fixed-window (tumbling) allowance — not a per-transaction cap — because policy
+signatures are secretless. The fixed reset means up to `2 * daily_limit` can move
+across a boundary; treat it as a guardrail, not a hard cap (see
+[Policy Contract](./policy-contract.md) for why this distinction matters).
 
 ## Destructive flows are guided, never one-click
 

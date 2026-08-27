@@ -189,13 +189,82 @@ describe("POST /verification/submit", () => {
   });
 });
 
+describe("POST /verification/submit — queue controls (M7)", () => {
+  async function submit(app: FastifyInstance, contractId = C1) {
+    return app.inject({
+      method: "POST",
+      url: "/verification/submit",
+      payload: { ...validRepoSubmission, contractId },
+    });
+  }
+
+  it("dedups: a second active submission for the same contract is rejected (409)", async () => {
+    const { app } = build();
+    expect((await submit(app)).statusCode).toBe(201);
+    const dup = await submit(app);
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error).toBe("verification_in_progress");
+  });
+
+  it("allows resubmission of a contract whose prior run is terminal", async () => {
+    const records = createMemoryVerificationRepository();
+    app = buildServer({ records });
+    const first = await app.inject({
+      method: "POST",
+      url: "/verification/submit",
+      payload: validRepoSubmission,
+    });
+    const id = first.json().record.id;
+    // Mark the prior run terminal.
+    const rec = await records.find(id);
+    await records.update({ ...rec!, status: "verified" });
+    // Same contract can be resubmitted.
+    const again = await app.inject({
+      method: "POST",
+      url: "/verification/submit",
+      payload: validRepoSubmission,
+    });
+    expect(again.statusCode).toBe(201);
+  });
+
+  it("queue-depth cap: rejects (429) once active records reach maxActiveQueue", async () => {
+    const records = createMemoryVerificationRepository();
+    app = buildServer({ records, maxActiveQueue: 2 });
+    // Two distinct contracts fill the queue to the cap.
+    expect((await submit(app, C1)).statusCode).toBe(201);
+    expect((await submit(app, C2)).statusCode).toBe(201);
+    // A third distinct contract is over the cap.
+    const over = await app.inject({
+      method: "POST",
+      url: "/verification/submit",
+      payload: {
+        ...validRepoSubmission,
+        contractId: "CQW7RHWTWHWNIBTEQ7JDYNGHQ4VNXLFRPKW3B4ABM2MZBLVS5LTCCUAH",
+      },
+    });
+    expect(over.statusCode).toBe(429);
+    expect(over.json().error).toBe("queue_full");
+  });
+});
+
 describe("GET /verification/:contractId", () => {
   it("returns the full history newest-first", async () => {
     const records = createMemoryVerificationRepository();
     let clock = 1000;
     app = buildServer({ records, now: () => new Date(clock) });
 
-    await app.inject({ method: "POST", url: "/verification/submit", payload: validRepoSubmission });
+    const first = await app.inject({
+      method: "POST",
+      url: "/verification/submit",
+      payload: validRepoSubmission,
+    });
+    // A contract can be RE-verified over time, but only after the prior run is
+    // terminal (dedup blocks a second concurrent active run — M7). Terminalize
+    // the first run, then submit again to build a 2-entry history.
+    const firstId = first.json().record.id;
+    const rec = await records.find(firstId);
+    await records.update({ ...rec!, status: "verified" });
+
     clock = 2000;
     await app.inject({ method: "POST", url: "/verification/submit", payload: validRepoSubmission });
 
@@ -214,6 +283,28 @@ describe("GET /verification/:contractId", () => {
     const res = await app.inject({ method: "GET", url: `/verification/${C2}` });
     expect(res.statusCode).toBe(200);
     expect(res.json().records).toEqual([]);
+  });
+
+  it("strips the private build log but returns the public statusDetail (H3/FIX 6)", async () => {
+    const records = createMemoryVerificationRepository();
+    app = buildServer({ records });
+    await app.inject({ method: "POST", url: "/verification/submit", payload: validRepoSubmission });
+    const stored = (await records.findByContract(C1))[0]!;
+    // Simulate the worker completing the record with both fields.
+    await records.update({
+      ...stored,
+      status: "failed",
+      log: "git clone stderr: fatal: could not read from /Users/op/.ssh/id_rsa; host 10.0.0.5",
+      statusDetail: "Build failed (clone_failed).",
+    });
+
+    const res = await app.inject({ method: "GET", url: `/verification/${C1}` });
+    const rec = res.json().records[0];
+    expect(rec.statusDetail).toBe("Build failed (clone_failed).");
+    // The private log (with host paths / internal host) must NOT be exposed.
+    expect(rec.log).toBeUndefined();
+    expect(JSON.stringify(rec)).not.toContain("id_rsa");
+    expect(JSON.stringify(rec)).not.toContain("10.0.0.5");
   });
 
   it("400s on an invalid contract id", async () => {

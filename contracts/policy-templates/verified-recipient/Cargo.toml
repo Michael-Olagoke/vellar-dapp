@@ -1,0 +1,27 @@
+[package]
+name = "vela-verified-recipient-policy"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[features]
+testutils = []
+
+[dependencies]
+soroban-sdk = { workspace = true }
+smart-wallet-interface = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+# In-tree registry so tests exercise the REAL cross-contract is_verified call,
+# not a mock of it.
+vela-attestation-registry = { path = "../../attestation-registry" }
+# Forces the ed25519-dalek 2.x pin (see workspace Cargo.toml) into resolution so
+# soroban-env-host's test PRNG compiles. Not referenced from our test code.
+ed25519-dalek = { workspace = true }

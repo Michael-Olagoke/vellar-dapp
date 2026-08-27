@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
-import { useTheme } from "@/lib/theme";
+import { useEffect, useState, type ReactNode } from "react";
+import { LpActionButton, cx } from "@/app/landing/ui";
 import { useWalletActions, useWalletSession, useWalletStatus } from "@/lib/wallet-context";
-import { Logo } from "./logo";
+import { ChevronIcon, CopyIcon } from "./icons";
+import "@/app/landing/landing.css";
+import "./app.css";
 
-// App shell (docs/decisions.md dark-neomorphic dashboard): fixed left icon
-// sidebar + top bar (address, network, Send/Receive) around a panel-grid
-// content area. Guards the session and redirects to /app when signed out.
+// App shell — "paper & signals" product chrome (components/app.css): a
+// detached, collapsible floating sidebar (bottom tab bar on mobile) and a
+// top bar with the address chip, network label and page actions.
+// AppShell guards the session and redirects to /app when signed out;
+// AppShellView is the pure presentational layer (also used by /dev-ui).
+
+const SIDEBAR_KEY = "vellar.sidebar";
 
 const nav = [
   { href: "/dashboard", label: "Wallet", icon: <WalletIcon /> },
@@ -25,6 +31,111 @@ export interface ShellAction {
   primary?: boolean;
 }
 
+export function AppShellView({
+  children,
+  actions,
+  accountId,
+  network,
+  onDisconnect,
+  activePath,
+}: {
+  children: ReactNode;
+  actions?: ShellAction[];
+  accountId: string;
+  network: string;
+  onDisconnect: () => void;
+  activePath: string;
+}) {
+  const short = `${accountId.slice(0, 5)}…${accountId.slice(-5)}`;
+
+  // Collapsed state persists per browser; unavailable storage means default.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "collapsed");
+    } catch {
+      /* default stays expanded */
+    }
+  }, []);
+  function toggleSidebar() {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(SIDEBAR_KEY, next ? "collapsed" : "expanded");
+      } catch {
+        /* non-persistent is fine */
+      }
+      return next;
+    });
+  }
+
+  return (
+    <div className={cx("lp lpa", collapsed && "lpa-collapsed")}>
+      {/* Detached sidebar (→ bottom tab bar on mobile) */}
+      <aside className="lpa-side">
+        <div className="lpa-side-top">
+          <button
+            className="lpa-collapse"
+            onClick={toggleSidebar}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+          >
+            <ChevronIcon dir={collapsed ? "right" : "left"} />
+          </button>
+        </div>
+        {nav.map((item) => {
+          const active = activePath === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={item.label}
+              className={`lpa-navitem${active ? " active" : ""}`}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </aside>
+
+      {/* Main column */}
+      <div className="lpa-main">
+        <header className="lpa-top">
+          <div className="flex items-center gap-3">
+            <button
+              className="lpa-chip-btn"
+              onClick={() => void navigator.clipboard.writeText(accountId)}
+              title={`${accountId} · click to copy`}
+            >
+              {short} <CopyIcon size={13} />
+            </button>
+            <p className="lpa-net">{network} network</p>
+          </div>
+
+          <div className="lpa-top-actions">
+            {actions?.map((a) => (
+              <LpActionButton
+                key={a.label}
+                onClick={a.onClick}
+                variant={a.primary ? "sun" : "outline"}
+                size="sm"
+              >
+                {a.label}
+              </LpActionButton>
+            ))}
+            <LpActionButton onClick={onDisconnect} variant="outline" size="sm">
+              Disconnect
+            </LpActionButton>
+          </div>
+        </header>
+
+        <main className="lpa-content">{children}</main>
+      </div>
+    </div>
+  );
+}
+
 export function AppShell({ children, actions }: { children: ReactNode; actions?: ShellAction[] }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -38,160 +149,28 @@ export function AppShell({ children, actions }: { children: ReactNode; actions?:
 
   if (status !== "connected" || !session) {
     return (
-      <main
-        style={{
-          padding: 120,
-          color: "var(--muted)",
-          background: "var(--neo-bg)",
-          minHeight: "100vh",
-        }}
-      >
-        {status === "loading" ? "Restoring your session…" : "Redirecting…"}
+      <main className="lp lpa" style={{ display: "block", padding: 120 }}>
+        <span style={{ color: "var(--lp-ink-soft)" }}>
+          {status === "loading" ? "Restoring your session…" : "Redirecting…"}
+        </span>
       </main>
     );
   }
 
-  const short = `${session.accountId.slice(0, 5)}…${session.accountId.slice(-5)}`;
-
   return (
-    <div className="shell">
-      {/* Sidebar (→ bottom tab bar on mobile) */}
-      <aside className="shell-side">
-        <Link href="/" aria-label="Vellar home" className="shell-logo">
-          <Logo height={38} />
-        </Link>
-        {nav.map((item) => {
-          const active = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={item.label}
-              className={`shell-navitem${active ? " active" : ""}`}
-            >
-              {item.icon}
-              <span className="shell-tablabel">{item.label}</span>
-            </Link>
-          );
-        })}
-      </aside>
-
-      {/* Main column */}
-      <div className="shell-main">
-        <header className="shell-top">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {/* Logo shows here on mobile (sidebar logo is hidden) */}
-            <Link
-              href="/"
-              aria-label="Vellar home"
-              className="shell-mobile-logo"
-              style={{ display: "none" }}
-            >
-              <Logo height={26} />
-            </Link>
-            <div>
-              <button
-                className="mono neo-btn"
-                onClick={() => void navigator.clipboard.writeText(session.accountId)}
-                style={{ padding: "8px 14px", fontSize: 13, fontWeight: 700 }}
-                title={`${session.accountId} · click to copy`}
-              >
-                {short} ⧉
-              </button>
-              <p
-                className="eyebrow"
-                style={{
-                  marginTop: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 10,
-                }}
-              >
-                <span className="pulse"></span> {session.network} network
-              </p>
-            </div>
-          </div>
-
-          <div className="shell-actions">
-            {actions?.map((a) =>
-              a.primary ? (
-                <button key={a.label} onClick={a.onClick} className="btn btn-signal btn-sm">
-                  {a.label}
-                </button>
-              ) : (
-                <button
-                  key={a.label}
-                  onClick={a.onClick}
-                  className="neo-btn"
-                  style={{ padding: "8px 16px", fontSize: 14, fontWeight: 700 }}
-                >
-                  {a.label}
-                </button>
-              ),
-            )}
-            <ThemeToggle />
-            <button
-              onClick={() => void walletActions.disconnect()}
-              className="neo-btn"
-              style={{ padding: "8px 16px", fontSize: 14, fontWeight: 700 }}
-            >
-              Disconnect
-            </button>
-          </div>
-        </header>
-
-        <main className="shell-content">{children}</main>
-      </div>
-    </div>
-  );
-}
-
-function ThemeToggle() {
-  const { theme, toggle } = useTheme();
-  return (
-    <button
-      onClick={toggle}
-      className="neo-btn"
-      aria-label="Toggle light/dark theme"
-      title={theme === "dark" ? "Switch to light" : "Switch to dark"}
-      style={{
-        width: 40,
-        height: 40,
-        display: "grid",
-        placeItems: "center",
-        color: "var(--signal)",
-      }}
+    <AppShellView
+      actions={actions}
+      accountId={session.accountId}
+      network={session.network}
+      onDisconnect={() => void walletActions.disconnect()}
+      activePath={pathname}
     >
-      {theme === "dark" ? (
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" />
-        </svg>
-      ) : (
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
-        </svg>
-      )}
-    </button>
+      {children}
+    </AppShellView>
   );
 }
 
-/* Line icons (design.md §5: stroke currentColor, 2px) */
+/* Line icons: stroke currentColor, 2px */
 function WalletIcon() {
   return (
     <svg
@@ -222,7 +201,6 @@ function ShieldIcon() {
     </svg>
   );
 }
-
 function BadgeCheckIcon() {
   return (
     <svg

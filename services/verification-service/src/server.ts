@@ -25,8 +25,13 @@ export interface VerificationRecordInternal extends VerificationRecord {
   sourceArchiveRef?: string;
   /** Optional lockfile digest, part of the deterministic-build inputs (idea.md §6.3). */
   lockfileHash?: string;
-  /** Human-readable build/compare log, populated by the worker (esp. on failure). */
+  /** PRIVATE full build/clone output (operators only). Populated by the worker.
+   * NEVER returned by the public API — toPublic strips it (security-audit.md
+   * H3/FIX 6): it may carry clone stderr, host paths, and resolved IPs. */
   log?: string;
+  /** PUBLIC sanitized one-line status returned to submitters — a short reason
+   * with no raw build output. Populated by the worker (verify.ts statusDetail). */
+  statusDetail?: string;
 }
 
 export interface VerificationRepository {
@@ -35,6 +40,11 @@ export interface VerificationRepository {
   /** All records for a contract, newest first — a contract may be resubmitted. */
   findByContract(contractId: string): Promise<VerificationRecordInternal[]>;
   update(record: VerificationRecordInternal): Promise<void>;
+  /** Count of ACTIVE records (submitted|building) — queue-depth cap (M7). */
+  countActive(): Promise<number>;
+  /** True when the contract already has an active (submitted|building) record —
+   * per-contractId dedup (M7). */
+  hasActiveForContract(contractId: string): Promise<boolean>;
 }
 
 export function createMemoryVerificationRepository(): VerificationRepository {
@@ -53,6 +63,21 @@ export function createMemoryVerificationRepository(): VerificationRepository {
     },
     async update(record) {
       records.set(record.id, record);
+    },
+    async countActive() {
+      let n = 0;
+      for (const r of records.values()) {
+        if (r.status === "submitted" || r.status === "building") n++;
+      }
+      return n;
+    },
+    async hasActiveForContract(contractId) {
+      for (const r of records.values()) {
+        if (r.contractId === contractId && (r.status === "submitted" || r.status === "building")) {
+          return true;
+        }
+      }
+      return false;
     },
   };
 }
@@ -134,12 +159,17 @@ export interface VerificationServiceDeps {
   records?: VerificationRepository;
   queue?: BuildJobQueue;
   now?: () => Date;
+  /** Max active (submitted|building) records before /verification/submit rejects
+   * with 429 (M7 queue-depth cap). This is the real anti-flood control on the
+   * last unmetered unauthenticated write path. Default 1000. */
+  maxActiveQueue?: number;
 }
 
 export function buildServer(deps: VerificationServiceDeps = {}): FastifyInstance {
   const records = deps.records ?? createMemoryVerificationRepository();
   const queue = deps.queue ?? createNoopBuildJobQueue();
   const now = deps.now ?? (() => new Date());
+  const maxActiveQueue = deps.maxActiveQueue ?? 1000;
 
   const app = Fastify({ logger: true });
   registerHealth(app, "verification-service");
@@ -152,6 +182,25 @@ export function buildServer(deps: VerificationServiceDeps = {}): FastifyInstance
       return reply.code(400).send({ error: "invalid_body", details: parsed.error.issues });
     }
     const input = parsed.data;
+
+    // Queue-depth cap (M7): this is the last unmetered unauthenticated write path
+    // after the funding-path budgets, so the cap is a real control. Reject before
+    // inserting anything so a flood cannot grow the table unbounded.
+    if ((await records.countActive()) >= maxActiveQueue) {
+      return reply.code(429).send({
+        error: "queue_full",
+        message: "Verification queue is at capacity; try again later.",
+      });
+    }
+    // Per-contractId dedup (M7): one active verification per contract, so a
+    // single contractId can't be used to flood the shared queue with duplicates.
+    if (await records.hasActiveForContract(input.contractId)) {
+      return reply.code(409).send({
+        error: "verification_in_progress",
+        message: "A verification for this contract is already in progress.",
+      });
+    }
+
     const timestamp = now().toISOString();
     const record: VerificationRecordInternal = {
       id: randomUUID(),
@@ -226,7 +275,11 @@ export function buildServer(deps: VerificationServiceDeps = {}): FastifyInstance
 
 /** Strip internal-only fields (archive ref, lockfile hash) from API responses —
  * the public record is the @vellar/types shape plus the build log. */
-function toPublic(record: VerificationRecordInternal): VerificationRecord & { log?: string } {
-  const { sourceArchiveRef: _ref, lockfileHash: _lock, ...pub } = record;
+function toPublic(
+  record: VerificationRecordInternal,
+): VerificationRecord & { statusDetail?: string } {
+  // Strip the internal fields AND the private `log` (H3/FIX 6): only the
+  // sanitized statusDetail is safe to return unauthenticated.
+  const { sourceArchiveRef: _ref, lockfileHash: _lock, log: _log, ...pub } = record;
   return pub;
 }

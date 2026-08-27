@@ -5,9 +5,10 @@ import type { PolicyDefinition } from "@vellar/types";
 // PolicyTemplateRegistry + PolicyValidator (idea.md §6.2; §19 D3: policies
 // come from structured templates, never freeform). Each template declares how
 // it is ENFORCED on-chain — honestly: our configurable spending-limit contract
-// (rolling-window allowance, user-chosen cap) covers spending limits; allowlists
-// and thresholds map to the smart wallet's native SignerLimits; timelock awaits
-// a custom contract in contracts/policy-templates.
+// (cumulative allowance over a FIXED/tumbling window — resets on schedule, so up
+// to 2x the cap can move across a boundary; NOT a sliding window) covers
+// spending limits; allowlists and thresholds map to the smart wallet's native
+// SignerLimits; timelock awaits a custom contract in contracts/policy-templates.
 
 /**
  * VELA configurable spending-limit policy wasm (testnet). Built from
@@ -28,9 +29,28 @@ import type { PolicyDefinition } from "@vellar/types";
 export const SPENDING_POLICY_WASM_HASH =
   "0f6b858d61799a33efdc2303c60eb0c148fd2983b7d2336fc345b5492a24b791";
 
+/**
+ * VELA verified-recipient policy wasm (testnet). Built through the SAME
+ * canonical image (vela-verify:1.94.0), self-verified (clean rebuild
+ * byte-identical), uploaded 2026-08-01 with --optimize=false (tx 4602d65e…).
+ * `__constructor(wallet, registry)` binds each instance to one wallet and the
+ * attestation registry; `policy__` rejects any auth whose contexts invoke a
+ * contract without a live attestation (docs/design-provenance-gated-spending.md).
+ */
+export const VERIFIED_RECIPIENT_WASM_HASH =
+  "a57efbf969d6e574e2b40d98985a145fd87d1760224ef6d10e268ea1f6080960";
+
+/**
+ * The deployed AttestationRegistry instance (testnet, 2026-08-01), fed by the
+ * verification pipeline's attestor (worker-service). Baked into generated
+ * verified_only manifests the same way the wasm hashes are pinned: the
+ * registry an instance trusts is part of what the policy IS.
+ */
+export const ATTESTATION_REGISTRY_ID = "CBZVS2ETJKCIMRRWUHTZFVMWDACJNYUZ54JIXUJCHXNBFNXELKTSWHGP";
+
 /** Stroops per XLM (7 decimals). */
 const STROOPS_PER_XLM = 10_000_000n;
-/** Default rolling window when a policy sets only a daily cap: 24h. */
+/** Default fixed (tumbling) window when a policy sets only a daily cap: 24h. */
 export const DEFAULT_WINDOW_SECONDS = 60 * 60 * 24;
 
 /** Parse a decimal XLM string (e.g. "12.5") to integer stroops. Assumes the
@@ -60,9 +80,9 @@ export type Enforcement =
       kind: "policy-contract";
       wasmHash: string;
       /** Constructor args for the per-user instance, derived from the
-       * definition. Present once a spending-limit policy is generated. (Named
+       * definition/deployment. Present once a policy is generated. (Named
        * `constructorArgs`, not `constructor`, to avoid the reserved property.) */
-      constructorArgs?: SpendingConstructor;
+      constructorArgs?: SpendingConstructor | VerifiedRecipientConstructor;
     }
   | { kind: "signer-limits" }
   | { kind: "none" }
@@ -74,6 +94,13 @@ export type Enforcement =
 export interface SpendingConstructor {
   dailyLimitStroops: string;
   windowSeconds: number;
+}
+
+/** Immutable args for the verified-recipient contract's `__constructor`.
+ * `wallet` is filled in at deploy time; the registry is pinned at generate
+ * time (ATTESTATION_REGISTRY_ID). */
+export interface VerifiedRecipientConstructor {
+  registry: string;
 }
 
 export interface PolicyTemplate {
@@ -113,7 +140,7 @@ export const templates: PolicyTemplate[] = [
   {
     type: "spending_limit",
     title: "Spending limit",
-    description: "Cap how much XLM a signer can move within a rolling window.",
+    description: "Cap total XLM a signer can move per fixed period.",
     schema: base.extend({
       type: z.literal("spending_limit"),
       spendingLimits: z
@@ -138,6 +165,15 @@ export const templates: PolicyTemplate[] = [
     enforcement: { kind: "signer-limits" },
   },
   {
+    type: "verified_only",
+    title: "Verified contracts only",
+    description: "Restrict a signer to contracts with verified source.",
+    schema: base.extend({
+      type: z.literal("verified_only"),
+    }),
+    enforcement: { kind: "policy-contract", wasmHash: VERIFIED_RECIPIENT_WASM_HASH },
+  },
+  {
     type: "timelock",
     title: "Time-lock",
     description: "Delay sensitive admin actions by a configurable period.",
@@ -158,10 +194,11 @@ export function getTemplate(type: string): PolicyTemplate | undefined {
 /**
  * Derive the on-chain constructor args for a spending-limit policy.
  *
- * The contract enforces a CUMULATIVE rolling-window allowance — a per-transfer
- * cap is not a real spending limit (policy signatures are secretless; repeated
- * capped transfers drain the wallet). So `dailyXlm` maps directly to the
- * window allowance over 24h. When only `perTxXlm` is set we still enforce it as
+ * The contract enforces a CUMULATIVE allowance over a FIXED (tumbling) window —
+ * a per-transfer cap is not a real spending limit (policy signatures are
+ * secretless; repeated capped transfers drain the wallet). So `dailyXlm` maps
+ * directly to the window allowance over 24h (resets on a fixed schedule, so up
+ * to 2x can move across a boundary). When only `perTxXlm` is set we still enforce it as
  * a cumulative daily cap (the safe interpretation), never as an unbounded
  * per-tx cap. When both are set, the daily cap is the enforced ceiling and the
  * per-tx value is authoring metadata only.
@@ -242,6 +279,11 @@ export function generatePolicy(
   let enforcement = template.enforcement;
   if (definition.type === "spending_limit" && enforcement.kind === "policy-contract") {
     enforcement = { ...enforcement, constructorArgs: deriveSpendingConstructor(definition) };
+  }
+  // Verified-only instances bind to the deployed attestation registry — pinned
+  // at generate time so the manifest fully determines the deploy.
+  if (definition.type === "verified_only" && enforcement.kind === "policy-contract") {
+    enforcement = { ...enforcement, constructorArgs: { registry: ATTESTATION_REGISTRY_ID } };
   }
 
   return {

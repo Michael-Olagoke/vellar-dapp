@@ -5,6 +5,7 @@ import {
   Operation,
   TransactionBuilder,
   type Transaction,
+  type xdr,
 } from "@stellar/stellar-sdk";
 import type { HorizonAccount } from "./horizon";
 
@@ -16,6 +17,11 @@ import type { HorizonAccount } from "./horizon";
 
 /** Generous window: external signing can be slow. */
 const TIMEOUT_SECONDS = 24 * 60 * 60;
+
+/** Stellar's hard protocol limit: a transaction may carry at most 100
+ * operations (a 101-op tx is rejected with txTOO_MANY_OPS). Cleanup batches
+ * that exceed this are split into consecutive transactions. */
+export const OPS_PER_TX = 100;
 
 export interface CleanupStep {
   title: string;
@@ -35,38 +41,29 @@ function step(title: string, description: string, tx: Transaction): CleanupStep 
   return { title, description, xdr: tx.toXDR(), hash: tx.hash().toString("hex") };
 }
 
-/**
- * Builds the cleanup transaction(s): asset transfers to the destination,
- * trustline removals, offer cancellations, data deletions — in dependency
- * order, batched into one transaction (accounts needing >100 ops can re-run
- * the wizard). Empty when there is nothing to clean.
+/** A single cleanup operation plus the human-readable action it performs. */
+interface CleanupOp {
+  op: xdr.Operation;
+  action: string;
+}
+
+/** Collects every cleanup operation in DEPENDENCY order (RA-5), each paired with
+ * its description. The order matters for on-chain success:
+ *   1. cancel offers  — an open sell offer locks the offered amount as a SELLING
+ *      LIABILITY, so it is not spendable. Cancelling first frees it; otherwise a
+ *      payment of the full balance below hits op_underfunded (only balance minus
+ *      liabilities is movable) and the whole tx fails.
+ *   2. pay out balances then remove each trustline — transfer before its removal.
+ *   3. delete data entries.
  */
-export function buildCleanupSteps(
-  account: HorizonAccount,
-  destination: string,
-  networkPassphrase: string,
-): CleanupStep[] {
-  const source = new Account(account.accountId, account.sequence);
-  const actions: string[] = [];
-  const builder = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase });
-  let ops = 0;
+function collectCleanupOps(account: HorizonAccount, destination: string): CleanupOp[] {
+  const out: CleanupOp[] = [];
 
-  for (const balance of account.balances) {
-    if (balance.assetType === "native") continue;
-    const asset = toAsset(balance.assetCode, balance.assetIssuer);
-    if (Number(balance.balance) > 0) {
-      builder.addOperation(Operation.payment({ destination, asset, amount: balance.balance }));
-      actions.push(`send ${balance.balance} ${asset.getCode()} to the destination`);
-      ops++;
-    }
-    builder.addOperation(Operation.changeTrust({ asset, limit: "0" }));
-    actions.push(`remove the ${asset.getCode()} trustline`);
-    ops++;
-  }
-
+  // 1. Cancel offers first — frees selling liabilities so the payments below can
+  //    move the full asset balance.
   for (const offer of account.offers) {
-    builder.addOperation(
-      Operation.manageSellOffer({
+    out.push({
+      op: Operation.manageSellOffer({
         selling:
           offer.sellingAssetType === "native"
             ? Asset.native()
@@ -79,27 +76,77 @@ export function buildCleanupSteps(
         price: offer.price,
         offerId: offer.id,
       }),
-    );
-    actions.push(`cancel offer #${offer.id}`);
-    ops++;
+      action: `cancel offer #${offer.id}`,
+    });
   }
 
+  // 2. Pay out each non-native balance, then remove its trustline.
+  for (const balance of account.balances) {
+    if (balance.assetType === "native") continue;
+    const asset = toAsset(balance.assetCode, balance.assetIssuer);
+    if (Number(balance.balance) > 0) {
+      out.push({
+        op: Operation.payment({ destination, asset, amount: balance.balance }),
+        action: `send ${balance.balance} ${asset.getCode()} to the destination`,
+      });
+    }
+    out.push({
+      op: Operation.changeTrust({ asset, limit: "0" }),
+      action: `remove the ${asset.getCode()} trustline`,
+    });
+  }
+
+  // 3. Delete data entries.
   for (const key of account.dataKeys) {
-    builder.addOperation(Operation.manageData({ name: key, value: null }));
-    actions.push(`delete data entry "${key}"`);
-    ops++;
+    out.push({
+      op: Operation.manageData({ name: key, value: null }),
+      action: `delete data entry "${key}"`,
+    });
   }
 
-  if (ops === 0) return [];
+  return out;
+}
 
-  const tx = builder.setTimeout(TIMEOUT_SECONDS).build();
-  return [
-    step(
-      "Clean up the account",
-      `One transaction that will: ${actions.join("; ")}. Note: the destination must trust any asset being sent to it.`,
-      tx,
-    ),
-  ];
+/**
+ * Builds the cleanup transaction(s): asset transfers to the destination,
+ * trustline removals, offer cancellations, data deletions — in dependency
+ * order. A batch that exceeds the 100-op protocol limit is split into
+ * CONSECUTIVE transactions (each ≤ OPS_PER_TX) the user signs and submits in
+ * order; the shared `Account` source auto-increments the sequence so tx N+1
+ * follows tx N. Empty when there is nothing to clean.
+ */
+export function buildCleanupSteps(
+  account: HorizonAccount,
+  destination: string,
+  networkPassphrase: string,
+): CleanupStep[] {
+  const cleanupOps = collectCleanupOps(account, destination);
+  if (cleanupOps.length === 0) return [];
+
+  // One shared source: each build() bumps its sequence, so the split
+  // transactions carry consecutive sequence numbers.
+  const source = new Account(account.accountId, account.sequence);
+  const chunkCount = Math.ceil(cleanupOps.length / OPS_PER_TX);
+  const steps: CleanupStep[] = [];
+
+  for (let start = 0, part = 1; start < cleanupOps.length; start += OPS_PER_TX, part++) {
+    const chunk = cleanupOps.slice(start, start + OPS_PER_TX);
+    const builder = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase });
+    for (const { op } of chunk) builder.addOperation(op);
+    const tx = builder.setTimeout(TIMEOUT_SECONDS).build();
+
+    const actions = chunk.map((c) => c.action).join("; ");
+    const title =
+      chunkCount === 1 ? "Clean up the account" : `Clean up the account (${part}/${chunkCount})`;
+    const description =
+      (chunkCount === 1
+        ? `One transaction that will: ${actions}.`
+        : `Transaction ${part} of ${chunkCount} — sign and submit in order. This one will: ${actions}.`) +
+      " Note: the destination must trust any asset being sent to it.";
+    steps.push(step(title, description, tx));
+  }
+
+  return steps;
 }
 
 /** Builds the final account-merge transaction (call only when mergeReady). */

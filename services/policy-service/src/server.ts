@@ -1,10 +1,23 @@
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
-import { registerHealth, registerMetrics, domainMetrics, recordOutcome } from "@vellar/service-kit";
+import {
+  registerHealth,
+  registerMetrics,
+  domainMetrics,
+  recordOutcome,
+  type SpendBudget,
+  type BudgetNetwork,
+} from "@vellar/service-kit";
 import type { PolicyDefinition } from "@vellar/types";
-import { PolicyDeployError, type PolicyDeployer } from "./deploy";
+import { DEPLOY_FEE, PolicyDeployError, type PolicyDeployer } from "./deploy";
 import { generatePolicy, templates, validateDefinition, type GeneratedPolicy } from "./templates";
+import {
+  AttachMismatchError,
+  AttachUnconfirmedError,
+  verifyAttachTx,
+  type TxLookup,
+} from "./verify-attach";
 
 // Policy API (idea.md §11): validate → generate → (review) → deploy.
 // Generated policies persist for review/deploy (idea.md §9 policies table —
@@ -16,8 +29,9 @@ export interface PolicyRecord extends GeneratedPolicy {
   createdAt: string;
   status: "generated" | "instance_deployed" | "deployed";
   /** The policy contract instance deployed for this policy (spending limits).
-   * Set by /deploy-instance before the wallet attaches it. */
-  instance?: { contractId: string; txHash: string; deployedAt: string };
+   * Set by /deploy-instance before the wallet attaches it. `wallet` is the
+   * smart-account it is bound to — needed to verify the attach tx (L1). */
+  instance?: { contractId: string; wallet: string; txHash: string; deployedAt: string };
   /** The completed attach (kit.addPolicy), recorded after the passkey signs. */
   deployment?: { contractId?: string; txHash: string; deployedAt: string };
 }
@@ -70,15 +84,35 @@ export interface PolicyServiceDeps {
   /** Deploys per-user policy contract instances server-side (sponsor-funded).
    * undefined = /deploy-instance returns 503 (no sponsor configured). */
   deployer?: PolicyDeployer;
+  /** Readiness probe for DB-aware /health (FIX 7). */
+  isReady?: () => boolean | Promise<boolean>;
+  /** Rolling-window spend budget for the "deploy" line (FIX 3). Consumed before
+   * a sponsor-funded deploy; a refusal returns 503. Unset = disabled. */
+  budget?: SpendBudget;
+  /** Network label for budget accounting — from server config, never a request
+   * body (V5). Required when budget is set. */
+  budgetNetwork?: BudgetNetwork;
+  /** RPC tx lookup for L1 attach verification, bound to the server-config
+   * network's RPC. When set, /policies/deploy verifies the attach tx before
+   * stamping 'deployed'. Unset = verification disabled (dev/no-rpc). */
+  verifyAttach?: TxLookup;
+  /** Network label for the attach verification (server config, never the
+   * request body — V5). Defaults to "testnet". */
+  network?: BudgetNetwork;
+  /** Passphrase used to decode the attach tx envelope. Defaults to testnet. */
+  networkPassphrase?: string;
 }
 
 export function buildServer(deps: PolicyServiceDeps = {}): FastifyInstance {
   const policies = deps.policies ?? createMemoryPolicyRepository();
   const now = deps.now ?? (() => new Date());
   const deployer = deps.deployer;
+  const verifyAttach = deps.verifyAttach;
+  const network = deps.network ?? "testnet";
+  const networkPassphrase = deps.networkPassphrase ?? "Test SDF Network ; September 2015";
 
   const app = Fastify({ logger: true });
-  registerHealth(app, "policy-service");
+  registerHealth(app, "policy-service", { isReady: deps.isReady });
   registerMetrics(app, "policy-service");
 
   app.get("/policies/templates", async () =>
@@ -143,8 +177,7 @@ export function buildServer(deps: PolicyServiceDeps = {}): FastifyInstance {
 
     const result = await deployer.simulateInstance({
       wallet: parsed.data.wallet,
-      dailyLimitStroops: enforcement.constructorArgs.dailyLimitStroops,
-      windowSeconds: enforcement.constructorArgs.windowSeconds,
+      constructorArgs: enforcement.constructorArgs,
     });
     return reply.send(result);
   });
@@ -180,12 +213,37 @@ export function buildServer(deps: PolicyServiceDeps = {}): FastifyInstance {
       });
     }
 
+    // Consume the sponsor-funded "deploy" budget line before spending (FIX 3).
+    // Fails CLOSED: a refusal or accounting error blocks the deploy. Network
+    // label from server config, never the request body (V5). DEPLOY_FEE is the
+    // per-deploy fee ceiling this call may cost the sponsor.
+    if (deps.budget && deps.budgetNetwork) {
+      let allowed: boolean;
+      try {
+        const r = await deps.budget.tryConsume({
+          line: "deploy",
+          network: deps.budgetNetwork,
+          stroops: BigInt(DEPLOY_FEE),
+        });
+        allowed = r.ok;
+      } catch (err) {
+        request.log.error(err, "deploy budget accounting failed; refusing");
+        allowed = false;
+      }
+      if (!allowed) {
+        recordOutcome(domainMetrics.policyDeployed, "policy-service", "failure");
+        return reply.code(503).send({
+          error: "deploy_budget_exceeded",
+          message: "Policy-deploy budget reached; try again later.",
+        });
+      }
+    }
+
     let result: { contractId: string; txHash: string };
     try {
       result = await deployer.deployInstance({
         wallet: parsed.data.wallet,
-        dailyLimitStroops: enforcement.constructorArgs.dailyLimitStroops,
-        windowSeconds: enforcement.constructorArgs.windowSeconds,
+        constructorArgs: enforcement.constructorArgs,
       });
     } catch (err) {
       if (err instanceof PolicyDeployError) {
@@ -197,7 +255,8 @@ export function buildServer(deps: PolicyServiceDeps = {}): FastifyInstance {
     }
 
     record.status = "instance_deployed";
-    record.instance = { ...result, deployedAt: now().toISOString() };
+    // Persist the bound wallet so /policies/deploy can verify the attach tx (L1).
+    record.instance = { ...result, wallet: parsed.data.wallet, deployedAt: now().toISOString() };
     await policies.update(record);
     recordOutcome(domainMetrics.policyDeployed, "policy-service", "success");
     return reply.send({ policy: record, contractId: result.contractId });
@@ -212,6 +271,43 @@ export function buildServer(deps: PolicyServiceDeps = {}): FastifyInstance {
     }
     const record = await policies.find(parsed.data.policyId);
     if (!record) return reply.code(404).send({ error: "policy_not_found" });
+
+    // Full attach verification (L1): the client-supplied txHash must actually be
+    // an add_signer on THIS wallet binding THIS policy contract on-chain — not
+    // merely a successful hash on the network (that is a public list). Requires
+    // a deployed instance carrying the wallet + policy contract to verify against.
+    if (verifyAttach) {
+      if (!record.instance) {
+        return reply.code(422).send({
+          error: "no_instance",
+          message: "No deployed policy instance to verify an attach against.",
+        });
+      }
+      try {
+        await verifyAttachTx(
+          verifyAttach,
+          {
+            txHash: parsed.data.txHash,
+            network, // server config, never the request body (V5)
+            wallet: record.instance.wallet,
+            policyContractId: record.instance.contractId,
+          },
+          networkPassphrase,
+        );
+      } catch (err) {
+        if (err instanceof AttachUnconfirmedError) {
+          // Chain unreachable / tx not found — do NOT stamp; retryable.
+          request.log.warn({ code: err.code, policyId: record.id }, "attach unconfirmed");
+          return reply.code(503).send({ error: err.code, message: err.message });
+        }
+        if (err instanceof AttachMismatchError) {
+          // Chain confirmed a mismatch — a lie, not a transient.
+          request.log.warn({ code: err.code, policyId: record.id }, "attach mismatch");
+          return reply.code(422).send({ error: err.code, message: err.message });
+        }
+        throw err;
+      }
+    }
 
     record.status = "deployed";
     record.deployment = {

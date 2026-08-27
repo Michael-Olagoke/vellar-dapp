@@ -1,7 +1,9 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { VerificationRepository, VerificationRecordInternal } from "../server";
 import type { Db } from "./client";
 import { verificationRecords } from "./schema";
+
+const ACTIVE_STATUSES = ["submitted", "building"];
 
 // Postgres implementation of the verification persistence seam. Shape and
 // semantics must match createMemoryVerificationRepository exactly — the route
@@ -40,6 +42,26 @@ export function createPgVerificationRepository(db: Db): VerificationRepository {
           record,
         })
         .where(eq(verificationRecords.id, record.id));
+    },
+    async countActive() {
+      const rows = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(verificationRecords)
+        .where(inArray(verificationRecords.status, ACTIVE_STATUSES));
+      return rows[0]?.n ?? 0;
+    },
+    async hasActiveForContract(contractId) {
+      const rows = await db
+        .select({ id: verificationRecords.id })
+        .from(verificationRecords)
+        .where(
+          and(
+            eq(verificationRecords.contractId, contractId),
+            inArray(verificationRecords.status, ACTIVE_STATUSES),
+          ),
+        )
+        .limit(1);
+      return rows.length > 0;
     },
   };
 }

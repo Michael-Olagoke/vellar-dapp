@@ -1,24 +1,54 @@
-/* VELA extension popup — dark neomorphic at popup density (design.md §8 +
-   docs/decisions.md dark-neomorphic). Fonts use system stack: the extension
-   ships offline, so no external font CDN. Clash-style display falls back to a
-   heavy geometric system face; mono to the platform monospace. */
+/* Vellar extension popup — "paper & signals" at popup density.
+   Token values are a copy of the system source of truth
+   (apps/web/app/landing/landing.css .lp block) — keep them in sync; a
+   shared @vellar/ui token sheet is the eventual home. The extension ships
+   offline, so font-family stacks lead with the brand faces and fall back
+   to system faces (no CDN fonts in an extension popup).
+
+   Same rules as everywhere: white paper ground, forest ink, zero
+   border-radius with 45° cut corners (two-layer clip borders), no
+   elevation shadows, display face for numbers that matter.
+   Security semantics on white (AA-checked): ok #0d7a55 · bad #c2372b. */
 
 :root {
-  --bg: #0a0f0d;
-  --surface: #0e1512;
-  --surface2: #0a0f0d;
-  --line: rgba(255, 255, 255, 0.09);
-  --signal: #3ee6ad;
-  --ink: #eff5f2;
-  --muted: rgba(239, 245, 242, 0.74);
-  --muted2: rgba(239, 245, 242, 0.56);
-  --negative: #ff6b5e;
-  --chip: rgba(255, 255, 255, 0.06);
-  --neo-light: rgba(62, 230, 173, 0.06);
-  --neo-shadow: rgba(0, 0, 0, 0.66);
-  --neo-raised: -5px -5px 12px var(--neo-light), 6px 6px 16px var(--neo-shadow);
-  --neo-raised-sm: -2px -2px 6px var(--neo-light), 3px 3px 8px var(--neo-shadow);
-  --neo-inset: inset 3px 3px 8px var(--neo-shadow), inset -3px -3px 8px var(--neo-light);
+  --paper: #ffffff;
+  --paper-tint: #f5f9f6;
+  --ink: #0c3b31;
+  --ink-soft: rgba(12, 59, 49, 0.74);
+  --ink-faint: rgba(12, 59, 49, 0.55);
+  --line: rgba(12, 59, 49, 0.16);
+  --line-strong: rgba(12, 59, 49, 0.32);
+  --mint: #3ee6ad;
+  --mint-soft: #dcf8ec;
+  --sun: #ffc94a;
+  --sun-soft: #ffefc9;
+  --coral-soft: #ffe4e0;
+  --ok: #0d7a55;
+  --bad: #c2372b;
+
+  --display:
+    "Cabinet Grotesk", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --body: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Cut shapes at popup scale (16px cards, 8px controls) + the 1px-inset
+     inner shapes that draw the two-layer border. */
+  --clip-card: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
+  --clip-card-in: polygon(
+    1px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 16.41px),
+    calc(100% - 16.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
+  --clip-btn: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+  --clip-btn-in: polygon(
+    1px 1px,
+    calc(100% - 1px) 1px,
+    calc(100% - 1px) calc(100% - 8.41px),
+    calc(100% - 8.41px) calc(100% - 1px),
+    1px calc(100% - 1px)
+  );
 }
 
 * {
@@ -36,10 +66,9 @@ body {
   margin: 0;
   padding: 0;
   width: 360px;
-  background: var(--bg);
+  background: var(--paper);
   color: var(--ink);
-  font-family:
-    "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--body);
   -webkit-font-smoothing: antialiased;
 }
 #root {
@@ -53,24 +82,38 @@ body {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+}
+
+::selection {
+  background: var(--mint);
+  color: var(--ink);
+}
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 .eyebrow {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--signal);
+  color: var(--ink);
 }
 .mono {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--mono);
 }
 .display {
-  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
-  font-weight: 800;
+  font-family: var(--display);
+  font-weight: 700;
   letter-spacing: -0.02em;
+}
+.muted {
+  color: var(--ink-soft);
+}
+.muted2 {
+  color: var(--ink-faint);
 }
 
 /* Topbar */
@@ -89,47 +132,33 @@ body {
   flex-shrink: 0;
 }
 .netpill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--signal);
-}
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--signal);
-  box-shadow: 0 0 0 0 rgba(62, 230, 173, 0.6);
-  animation: pulse 2s infinite;
-}
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(62, 230, 173, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 7px rgba(62, 230, 173, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(62, 230, 173, 0);
-  }
+  color: var(--ink-faint);
 }
 
-/* Neomorphic surfaces */
-.neo {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  box-shadow: var(--neo-raised);
+/* Cut-corner card (two-layer border) */
+.panel {
+  position: relative;
+  background: var(--line-strong); /* the 1px border */
+  clip-path: var(--clip-card);
   padding: 16px;
 }
-.neo-inset {
-  background: var(--bg);
-  border-radius: 12px;
-  box-shadow: var(--neo-inset);
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--paper);
+  clip-path: var(--clip-card-in);
+}
+
+/* Inset well */
+.well {
+  background: var(--paper-tint);
+  border: 1px solid var(--line);
   padding: 12px 14px;
 }
 
@@ -140,45 +169,42 @@ body {
   justify-content: center;
   gap: 6px;
   border: none;
-  border-radius: 999px;
-  font-weight: 700;
+  border-radius: 0;
+  clip-path: var(--clip-btn);
   font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 11px 18px;
   cursor: pointer;
   transition:
-    box-shadow 0.15s,
-    transform 0.12s,
-    color 0.15s;
+    background 0.2s ease,
+    color 0.2s ease,
+    translate 0.2s ease;
 }
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.btn-signal {
-  background: var(--signal);
-  color: #04120c;
-  padding: 11px 18px;
-  font-size: 14px;
+.btn:active {
+  translate: 0 1px;
 }
-.btn-signal:active {
-  transform: translateY(1px);
-}
-.btn-neo {
-  background: #17211d;
+.btn-sun {
+  background: var(--sun);
   color: var(--ink);
-  border: 1px solid var(--line);
-  box-shadow: var(--neo-raised-sm);
-  padding: 11px 18px;
-  font-size: 14px;
 }
-.btn-neo:hover {
-  color: var(--signal);
-  border-color: rgba(62, 230, 173, 0.4);
+.btn-sun:hover {
+  background: var(--ink);
+  color: var(--sun);
 }
-.btn-neo:active {
-  box-shadow: var(--neo-inset);
+.btn-outline {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--ink);
+  clip-path: none;
 }
-.btn-full {
-  width: 100%;
+.btn-outline:hover {
+  background: var(--ink);
+  color: var(--paper);
 }
 .btn-row {
   display: flex;
@@ -190,16 +216,16 @@ body {
 
 /* Balance hero */
 .bal {
-  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
-  font-weight: 800;
-  font-size: 32px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 34px;
   letter-spacing: -0.02em;
   text-align: center;
   margin: 6px 0 4px;
 }
 .bal small {
   font-size: 15px;
-  color: var(--muted2);
+  color: var(--ink-faint);
   font-weight: 700;
 }
 
@@ -217,7 +243,7 @@ body {
   gap: 6px;
   background: none;
   border: none;
-  color: var(--muted);
+  color: var(--ink-soft);
   font-size: 11px;
   font-weight: 600;
   font-family: inherit;
@@ -226,22 +252,25 @@ body {
 .qa button i {
   width: 42px;
   height: 42px;
-  border-radius: 50%;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--neo-raised-sm);
   display: grid;
   place-items: center;
-  color: var(--signal);
+  background: var(--mint-soft);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  color: var(--ink);
   font-style: normal;
   font-size: 16px;
+  transition: background 0.2s ease;
+}
+.qa button:hover i {
+  background: var(--sun-soft);
 }
 .qa button:active i {
-  box-shadow: var(--neo-inset);
+  translate: 0 1px;
 }
 
 /* Approval / trust hero */
 .origin {
+  font-family: var(--display);
   font-size: 15px;
   font-weight: 700;
   word-break: break-all;
@@ -251,13 +280,15 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(62, 230, 173, 0.12);
-  border: 1px solid rgba(62, 230, 173, 0.3);
-  border-radius: 999px;
+  background: var(--mint-soft);
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--signal);
+  color: var(--ok);
+}
+.trust.warn {
+  background: var(--sun-soft);
+  color: var(--ink);
 }
 
 /* Connected dApp rows */
@@ -273,14 +304,19 @@ body {
 .dapp:first-of-type {
   border-top: none;
 }
-.link {
-  color: var(--signal);
+.dapp .btn {
+  padding: 6px 12px;
   font-size: 12px;
-  text-decoration: none;
 }
-.muted {
-  color: var(--muted);
+.link {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--mint);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
 }
-.muted2 {
-  color: var(--muted2);
+.link:hover {
+  text-decoration-color: var(--ink);
 }

@@ -8,7 +8,9 @@ import {
   scValToNative,
   Transaction,
   TransactionBuilder,
+  xdr,
 } from "@stellar/stellar-sdk";
+import type { SpendingConstructor, VerifiedRecipientConstructor } from "./templates";
 
 // Server-side deploy of a per-user spending-limit policy instance.
 //
@@ -46,10 +48,28 @@ export interface PolicyDeployConfig {
 export interface DeployPolicyInstanceInput {
   /** The user's smart-account (C…) the instance is bound to. */
   wallet: string;
-  /** Cumulative window allowance in stroops (string to preserve i128 range). */
-  dailyLimitStroops: string;
-  /** Rolling-window length in seconds. */
-  windowSeconds: number;
+  /** Template-specific constructor args from the generated manifest:
+   * spending-limit → { dailyLimitStroops, windowSeconds };
+   * verified-recipient → { registry }. The wallet is always arg 0. */
+  constructorArgs: SpendingConstructor | VerifiedRecipientConstructor;
+}
+
+/** ScVals for the template's `__constructor`, discriminated by args shape. */
+function constructorScVals(input: DeployPolicyInstanceInput): xdr.ScVal[] {
+  const wallet = nativeToScVal(Address.fromString(input.wallet), { type: "address" });
+  if ("registry" in input.constructorArgs) {
+    // __constructor(wallet: Address, registry: Address)
+    return [
+      wallet,
+      nativeToScVal(Address.fromString(input.constructorArgs.registry), { type: "address" }),
+    ];
+  }
+  // __constructor(wallet: Address, daily_limit: i128, window_seconds: u64)
+  return [
+    wallet,
+    nativeToScVal(BigInt(input.constructorArgs.dailyLimitStroops), { type: "i128" }),
+    nativeToScVal(input.constructorArgs.windowSeconds, { type: "u64" }),
+  ];
 }
 
 export interface SimulateResult {
@@ -69,7 +89,7 @@ export interface PolicyDeployer {
 
 // Max fee for the deploy (stroops). Deploys upload no code (the wasm is already
 // installed) but do run the constructor; generous to avoid fee-bump churn.
-const DEPLOY_FEE = "10000000";
+export const DEPLOY_FEE = "10000000";
 // The relayer/testnet reject timebounds more than 60s out; we submit direct to
 // RPC here but keep the same ceiling for consistency (sponsor.ts).
 const TIMEOUT_SECONDS = 60;
@@ -95,12 +115,7 @@ export function createPolicyDeployer(
       );
     }
 
-    // __constructor(wallet: Address, daily_limit: i128, window_seconds: u64)
-    const constructorArgs = [
-      nativeToScVal(Address.fromString(input.wallet), { type: "address" }),
-      nativeToScVal(BigInt(input.dailyLimitStroops), { type: "i128" }),
-      nativeToScVal(input.windowSeconds, { type: "u64" }),
-    ];
+    const constructorArgs = constructorScVals(input);
 
     return new TransactionBuilder(source, {
       fee: DEPLOY_FEE,

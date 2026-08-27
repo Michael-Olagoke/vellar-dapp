@@ -12,8 +12,60 @@ export {
   type Outcome,
 } from "./metrics";
 
-export function registerHealth(app: FastifyInstance, serviceName: string): void {
-  app.get("/health", async () => ({ status: "ok", service: serviceName }));
+export {
+  resolvePersistencePolicy,
+  type PersistenceInputs,
+  type PersistenceDecision,
+} from "./persistence";
+
+export {
+  resolveNetwork,
+  NetworkConfigError,
+  type Network,
+  type NetworkInputs,
+} from "./network-config";
+
+export {
+  withinCeiling,
+  createUnavailableBudget,
+  budgetLimitsFromEnv,
+  type SpendBudget,
+  type BudgetLimits,
+  type BudgetLine,
+  type BudgetNetwork,
+  type ConsumeRequest,
+  type ConsumeResult,
+} from "./budget";
+
+export { createPgSpendBudget, type BudgetDb, type PgBudgetConfig } from "./pg-budget";
+
+export interface HealthOptions {
+  /** Optional readiness probe. When it returns false (or throws), /health
+   * responds 503 so the orchestrator stops routing traffic — used to surface a
+   * degraded persistence layer (security-audit.md M6 / FIX 7). A missing probe
+   * keeps the classic always-200 liveness behavior. */
+  isReady?: () => boolean | Promise<boolean>;
+}
+
+export function registerHealth(
+  app: FastifyInstance,
+  serviceName: string,
+  options: HealthOptions = {},
+): void {
+  app.get("/health", async (_request, reply) => {
+    if (options.isReady) {
+      let ready = false;
+      try {
+        ready = await options.isReady();
+      } catch {
+        ready = false; // a probe that throws is treated as not-ready
+      }
+      if (!ready) {
+        return reply.code(503).send({ status: "unavailable", service: serviceName });
+      }
+    }
+    return { status: "ok", service: serviceName };
+  });
 }
 
 /**
@@ -111,4 +163,17 @@ export function portFromEnv(name: string, fallback: number): number {
     throw new Error(`${name} must be a valid port number, got "${raw}"`);
   }
   return port;
+}
+
+/**
+ * Resolve the bind host (security-audit.md L2/V4/FIX 6). BIND_HOST overrides;
+ * otherwise the caller's default. Downstream services default to "127.0.0.1" so
+ * they are unreachable except via the gateway's localhost proxy even if the
+ * platform doesn't firewall non-$PORT ports; only the gateway defaults to
+ * "0.0.0.0". An explicit BIND_HOST (e.g. for a distributed deployment where the
+ * gateway reaches services over a private network) still wins.
+ */
+export function hostFromEnv(defaultHost: string, env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.BIND_HOST;
+  return raw && raw.trim() !== "" ? raw.trim() : defaultHost;
 }

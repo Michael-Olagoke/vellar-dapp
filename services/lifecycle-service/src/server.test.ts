@@ -70,6 +70,28 @@ describe("buildCleanupPlan", () => {
     const usdcBalance = plan.blockers.find((b) => b.type === "balance");
     expect(usdcBalance?.actionRequired).toMatch(/transfer or burn/i);
   });
+
+  it("estimates cleanup transactions from the real op count, not blocker count (L6)", () => {
+    // 150 open offers = 150 cancel OPS = 2 cleanup txs (ceil(150/100)) + 1 merge.
+    // The old estimate counted offers as a single blocker and under-reported 2.
+    const plan = buildCleanupPlan(account({ openOffers: 150 }), G2);
+    expect(plan.estimatedTransactions).toBe(3);
+  });
+
+  it("counts a non-zero balance as two ops (transfer + trustline) in the estimate", () => {
+    // 100 non-zero token balances = 200 ops = 2 cleanup txs + 1 merge.
+    const balances = [
+      { assetType: "native", balance: "10.0" },
+      ...Array.from({ length: 100 }, (_, i) => ({
+        assetType: "credit_alphanum4",
+        assetCode: `T${i}`,
+        assetIssuer: G2,
+        balance: "1.0",
+      })),
+    ];
+    const plan = buildCleanupPlan(account({ balances }), G2);
+    expect(plan.estimatedTransactions).toBe(3);
+  });
 });
 
 describe("POST /lifecycle/inspect", () => {
@@ -201,10 +223,13 @@ describe("POST /lifecycle/execute", () => {
     expect(step.hash).toMatch(/^[0-9a-f]{64}$/);
 
     const tx = TransactionBuilder.fromXDR(step.xdr, Networks.TESTNET);
+    // RA-5: offer cancels come FIRST — cancelling frees any selling liabilities
+    // so the subsequent payment can move the full asset balance without hitting
+    // op_underfunded. Payments then precede their trustline removals.
     expect("operations" in tx && tx.operations.map((o) => o.type)).toEqual([
+      "manageSellOffer", // cancel offer 42 (frees liabilities first)
       "payment", // USDC to destination
       "changeTrust", // remove USDC trustline
-      "manageSellOffer", // cancel offer 42
       "manageData", // delete "config"
     ]);
     expect(tx.signatures).toHaveLength(0); // UNSIGNED — user signs externally

@@ -9,6 +9,7 @@ import {
 } from "vellar-sdk";
 import { walletConfig } from "./config";
 import { createHttpWalletBackend } from "./http-backend";
+import { createPolicySignerActions } from "./policy-signer";
 
 // Builds the real PasskeyKit-backed wallet runtime. The connector and the
 // payment client MUST share one PasskeyKit instance — the connected passkey's
@@ -38,6 +39,14 @@ export interface WalletRuntime {
    * to this wallet (policy-service /deploy-instance). Returns the tx hash.
    */
   attachPolicy(policyContractId: string): Promise<{ hash: string }>;
+  /**
+   * Detaches a policy signer from the smart account: passkey-signed kit.remove
+   * of SignerKey.Policy. Because the policy is a standalone signer, the wallet's
+   * self-removal exception lets the admin passkey remove it WITHOUT the policy's
+   * consent — the recovery path for a wallet stuck behind a reject-everything
+   * policy (security-audit.md V3 / FIX 5). Returns the tx hash.
+   */
+  detachPolicy(policyContractId: string): Promise<{ hash: string }>;
 }
 
 /** 7 days — the device-signer session length. The contract stores the
@@ -104,25 +113,34 @@ export function getWalletRuntime(): Promise<WalletRuntime> {
         });
         return { hash, expiresAt: new Date(expirationSeconds * 1000).toISOString() };
       },
+      // Policy attach/detach is wired through createPolicySignerActions
+      // (policy-signer.ts) so the standalone-signer + recovery-key invariants
+      // are unit-tested at the WIRING layer (RA-6), not just at the pure
+      // policyAttachArgs. The browser-only passkey-kit enums are injected.
       async attachPolicy(policyContractId) {
-        const { SignerStore } = await import("passkey-kit");
-        // A policy signer carries its own on-chain constraint, so it needs no
-        // SignerLimits and no expiration (revoked by removing the signer).
-        // Persistent so it survives as a durable rule on the account.
-        const tx = await kit.addPolicy(
-          policyContractId,
-          undefined,
-          SignerStore.Persistent,
-          undefined,
-        );
-        const signed = (await kit.sign(tx)) ?? tx;
-        const { hash } = await backend.submitTransaction({
-          signedXdr: typeof signed === "string" ? signed : (signed as { toXDR(): string }).toXDR(),
-          network: config.network,
-        });
-        return { hash };
+        const { SignerKey, SignerStore } = await import("passkey-kit");
+        return policySignerActions({ SignerKey, SignerStore }).attachPolicy(policyContractId);
+      },
+      async detachPolicy(policyContractId) {
+        const { SignerKey, SignerStore } = await import("passkey-kit");
+        return policySignerActions({ SignerKey, SignerStore }).detachPolicy(policyContractId);
       },
     };
+
+    /** Bind the extracted actions to this runtime's kit + backend + network,
+     * given the lazily-imported passkey-kit enums. */
+    function policySignerActions(enums: {
+      SignerKey: { Policy(id: string): unknown };
+      SignerStore: { Persistent: unknown; Temporary: unknown };
+    }) {
+      return createPolicySignerActions({
+        kit: kit as unknown as Parameters<typeof createPolicySignerActions>[0]["kit"],
+        backend,
+        network: config.network,
+        SignerKey: enums.SignerKey,
+        SignerStore: enums.SignerStore,
+      });
+    }
   })();
   return runtimePromise;
 }

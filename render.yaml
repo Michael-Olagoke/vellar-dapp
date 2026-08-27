@@ -17,6 +17,11 @@ services:
     name: vellar-backend
     runtime: node
     plan: free
+    # CD gate (security-audit.md M9 / FIX 11): do NOT auto-deploy on every push
+    # to the tracked branch. Deploy manually (or from a tagged release) AFTER CI
+    # is green, so an unreviewed/broken commit can't ship a tsx-run backend with
+    # live signing keys before the checks run.
+    autoDeploy: false
     # Render runs from the repo root; install the workspace, then start the
     # combined backend. (The SDK is a published npm dep — nothing to pre-build.)
     buildCommand: "corepack enable && pnpm install --frozen-lockfile"
@@ -34,6 +39,11 @@ services:
         value: "https://soroban-testnet.stellar.org"
       - key: STELLAR_NETWORK_PASSPHRASE
         value: "Test SDF Network ; September 2015"
+      # RA-10: the EXPLICIT network signal. The worker refuses to boot without it
+      # (no default), and cross-checks it against the passphrase + RPC above.
+      # Must agree with them — flip all three together for a mainnet cutover.
+      - key: STELLAR_NETWORK
+        value: "testnet"
       - key: HORIZON_URL
         value: "https://horizon-testnet.stellar.org"
       # Allow the deployed frontend origin (update to the real vellar.xyz once live).

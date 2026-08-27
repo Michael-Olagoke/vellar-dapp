@@ -10,9 +10,16 @@ import {
 } from "./pg-repository";
 import { activityLogs, wallets, walletSessions } from "./schema";
 
-// Integration tests against a real Postgres. Skipped unless TEST_DATABASE_URL
-// is set (CI provides a service container; locally: infra/docker compose).
+// Integration tests against a real Postgres. Skipped LOCALLY unless
+// TEST_DATABASE_URL is set (CI provides a service container; locally:
+// infra/docker compose). CI sets CI_REQUIRE_DB=1 so these FAIL rather than
+// silently skip if the DB service ever goes missing (RA-2).
 const DATABASE_URL = process.env.TEST_DATABASE_URL;
+if (!DATABASE_URL && process.env.CI_REQUIRE_DB === "1") {
+  throw new Error(
+    "CI_REQUIRE_DB=1 but TEST_DATABASE_URL is unset — DB integration tests would silently skip.",
+  );
+}
 
 describe.skipIf(!DATABASE_URL)("pg repositories", () => {
   let handle: DbHandle;
@@ -22,7 +29,9 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
   });
 
   afterAll(async () => {
-    await handle.close();
+    // Guarded: if beforeAll's connectDb threw, handle never got assigned and a
+    // bare close() would bury the real failure under a TypeError.
+    await handle?.close();
   });
 
   beforeEach(async () => {
@@ -81,6 +90,10 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
   });
 
   describe("session repository", () => {
+    // Far-future expiry so these round-trip/list tests aren't clock-sensitive;
+    // expiry behavior itself is covered by its own test below.
+    const FAR = "2099-01-01T00:00:00.000Z";
+
     it("round-trips sessions and misses cleanly on junk ids", async () => {
       const repo = createPgSessionRepository(handle.db);
       const record = {
@@ -89,6 +102,7 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
         network: "testnet" as const,
         createdAt: "2026-07-16T10:00:00.000Z",
         lastActiveAt: "2026-07-16T11:00:00.000Z",
+        expiresAt: FAR,
       };
       await repo.insert(record);
       await expect(repo.find(record.id)).resolves.toEqual(record);
@@ -101,6 +115,7 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
         contractId: "C1",
         network: "testnet" as const,
         createdAt: "2026-07-16T10:00:00.000Z",
+        expiresAt: FAR,
       };
       await repo.insert({ ...base, id: "older", lastActiveAt: "2026-07-16T10:00:00.000Z" });
       await repo.insert({ ...base, id: "newer", lastActiveAt: "2026-07-16T12:00:00.000Z" });
@@ -115,6 +130,53 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
       expect(listed.map((s) => s.id)).toEqual(["newer", "older"]);
     });
 
+    it("treats an expired session as ABSENT for find and listByContract (RA-3)", async () => {
+      const repo = createPgSessionRepository(handle.db);
+      const asOf = new Date("2026-08-09T00:00:00.000Z");
+      const expired = {
+        id: "expired-1",
+        contractId: "CEXP",
+        network: "testnet" as const,
+        createdAt: "2026-07-01T00:00:00.000Z",
+        lastActiveAt: "2026-08-01T00:00:00.000Z",
+        expiresAt: "2026-08-08T00:00:00.000Z", // before asOf
+      };
+      await repo.insert(expired);
+      // Expired == missing: no response distinguishes "expired" from "never existed".
+      await expect(repo.find("expired-1", asOf)).resolves.toBeUndefined();
+      await expect(repo.listByContract("CEXP", "testnet", asOf)).resolves.toEqual([]);
+    });
+
+    it("touch slides a live session forward but no-ops on an expired one (RA-3)", async () => {
+      const repo = createPgSessionRepository(handle.db);
+      const asOf = new Date("2026-08-09T00:00:00.000Z");
+      const newExpiry = new Date("2026-08-16T00:00:00.000Z");
+      await repo.insert({
+        id: "live-1",
+        contractId: "CT",
+        network: "testnet",
+        createdAt: "2026-08-08T00:00:00.000Z",
+        lastActiveAt: "2026-08-08T00:00:00.000Z",
+        expiresAt: "2026-08-15T00:00:00.000Z", // after asOf → live
+      });
+      await expect(repo.touch("live-1", asOf, newExpiry)).resolves.toBe(true);
+      const after = await repo.find("live-1", asOf);
+      expect(after?.expiresAt).toBe(newExpiry.toISOString());
+      expect(after?.lastActiveAt).toBe(asOf.toISOString());
+
+      // An already-expired session cannot extend its own life.
+      await repo.insert({
+        id: "dead-1",
+        contractId: "CT",
+        network: "testnet",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        lastActiveAt: "2026-08-01T00:00:00.000Z",
+        expiresAt: "2026-08-08T00:00:00.000Z", // before asOf → expired
+      });
+      await expect(repo.touch("dead-1", asOf, newExpiry)).resolves.toBe(false);
+      await expect(repo.touch("never", asOf, newExpiry)).resolves.toBe(false);
+    });
+
     it("delete returns true once and false for missing ids", async () => {
       const repo = createPgSessionRepository(handle.db);
       await repo.insert({
@@ -123,6 +185,7 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
         network: "testnet",
         createdAt: new Date().toISOString(),
         lastActiveAt: new Date().toISOString(),
+        expiresAt: FAR,
       });
       await expect(repo.delete("to-revoke")).resolves.toBe(true);
       await expect(repo.delete("to-revoke")).resolves.toBe(false);
@@ -168,7 +231,10 @@ describe.skipIf(!DATABASE_URL)("pg repositories", () => {
       expect(connect.statusCode).toBe(200);
       expect(connect.json().contractId).toBe("CE2E");
 
-      const session = await app.inject({ url: `/wallet/session/${connect.json().sessionId}` });
+      const session = await app.inject({
+        url: "/wallet/session",
+        headers: { authorization: `Bearer ${connect.json().sessionId}` },
+      });
       expect(session.statusCode).toBe(200);
       expect(session.json().contractId).toBe("CE2E");
 

@@ -1,5 +1,5 @@
 import type { VerificationStatus } from "@vellar/types";
-import type { ClaimedJob, VerificationJobStore } from "./job-store";
+import type { ClaimedJob, ReapResult, VerificationJobStore } from "./job-store";
 import type { VerificationJobInput } from "./verify";
 
 // An in-memory VerificationJobStore for local dev (no Postgres) and tests. Claim
@@ -15,6 +15,13 @@ interface Row {
   outputHash?: string;
   deployedHash?: string;
   log?: string;
+  statusDetail?: string;
+  /** When the record reached a terminal state — orders "latest per contract". */
+  completedAtMs?: number;
+  /** Number of times this job has been claimed for building (M7 reaper). */
+  attempts?: number;
+  /** When the current 'building' claim started (epoch ms) — reaper timeout base. */
+  startedBuildingAtMs?: number;
 }
 
 export interface MemoryJobStore extends VerificationJobStore {
@@ -40,10 +47,54 @@ export function createMemoryJobStore(): MemoryJobStore {
         if (claimed.length >= limit) break;
         if (row.status === "submitted") {
           row.status = "building";
+          row.attempts = (row.attempts ?? 0) + 1;
+          row.startedBuildingAtMs = Date.now();
           claimed.push({ recordId: row.recordId, ...row.job, submittedAtMs: row.submittedAtMs });
         }
       }
       return claimed;
+    },
+
+    async reapStranded({ timeoutMs, maxAttempts, nowMs }) {
+      const now = nowMs ?? Date.now();
+      let reclaimed = 0;
+      let deadLettered = 0;
+      for (const row of rows.values()) {
+        if (row.status !== "building") continue;
+        if (now - (row.startedBuildingAtMs ?? now) <= timeoutMs) continue;
+        // Stranded. Park it if it has already used all its attempts, else return
+        // it to the queue for another try.
+        if ((row.attempts ?? 0) >= maxAttempts) {
+          row.status = "dead_letter";
+          row.completedAtMs = now;
+          deadLettered++;
+        } else {
+          row.status = "submitted";
+          row.startedBuildingAtMs = undefined;
+          reclaimed++;
+        }
+      }
+      return { reclaimed, deadLettered };
+    },
+
+    async countActive() {
+      let n = 0;
+      for (const row of rows.values()) {
+        if (row.status === "submitted" || row.status === "building") n++;
+      }
+      return n;
+    },
+
+    async hasActiveForContract(contractId) {
+      for (const row of rows.values()) {
+        if (
+          row.job.contractId === contractId &&
+          (row.status === "submitted" || row.status === "building")
+        ) {
+          return true;
+        }
+      }
+      return false;
     },
     async complete(recordId, result) {
       const row = rows.get(recordId);
@@ -52,6 +103,29 @@ export function createMemoryJobStore(): MemoryJobStore {
       row.outputHash = result.outputHash;
       row.deployedHash = result.deployedHash;
       row.log = result.log;
+      row.statusDetail = result.statusDetail;
+      row.completedAtMs = Date.now();
+    },
+    async listLatestVerified(limit) {
+      // Latest terminal record per contract; include only when that latest is
+      // a verified run with a rebuilt hash (a newer failed run supersedes an
+      // older verified one — mirroring the pg DISTINCT ON semantics).
+      const latestByContract = new Map<string, Row>();
+      for (const row of rows.values()) {
+        if (row.status !== "verified" && row.status !== "failed") continue;
+        const current = latestByContract.get(row.job.contractId);
+        if (!current || (row.completedAtMs ?? 0) > (current.completedAtMs ?? 0)) {
+          latestByContract.set(row.job.contractId, row);
+        }
+      }
+      const result: Array<{ contractId: string; outputHash: string }> = [];
+      for (const row of latestByContract.values()) {
+        if (result.length >= limit) break;
+        if (row.status === "verified" && row.outputHash) {
+          result.push({ contractId: row.job.contractId, outputHash: row.outputHash });
+        }
+      }
+      return result;
     },
   };
 }

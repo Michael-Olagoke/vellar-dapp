@@ -1,15 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import {
+  Account,
+  Address,
+  Keypair,
+  Operation,
+  TransactionBuilder,
+  nativeToScVal,
+  xdr,
+} from "@stellar/stellar-sdk";
+import {
+  ATTESTATION_REGISTRY_ID,
   DEFAULT_WINDOW_SECONDS,
   policyHash,
   SPENDING_POLICY_WASM_HASH,
   validateDefinition,
+  VERIFIED_RECIPIENT_WASM_HASH,
   xlmToStroops,
 } from "./templates";
 import type { PolicyDeployer } from "./deploy";
-import { PolicyDeployError } from "./deploy";
-import { buildServer } from "./server";
+import { DEPLOY_FEE, PolicyDeployError } from "./deploy";
+import { buildServer, createMemoryPolicyRepository } from "./server";
 
 const G1 = "GCMCEGOUVALP2H6LTY7IPUUMSFKDQUMK3SDU5DI7LETNEZZKHRIIALKM";
 const G2 = "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3";
@@ -119,7 +130,7 @@ describe("Policy API", () => {
       kind: "policy-contract",
       wasmHash: SPENDING_POLICY_WASM_HASH,
     });
-    expect(res.json()).toHaveLength(5);
+    expect(res.json()).toHaveLength(6);
   });
 
   it("generate → review artifacts → GET → deploy records the deployment", async () => {
@@ -193,6 +204,115 @@ describe("xlmToStroops", () => {
   });
 });
 
+describe("POST /policies/deploy — attach verification (L1)", () => {
+  const PASSPHRASE = "Test SDF Network ; September 2015";
+  const WALLET = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+  const POLICY_CONTRACT = "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUWDA";
+
+  function addPolicyXdr(wallet: string, policy: string): string {
+    const signer = xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol("Policy"),
+      nativeToScVal(Address.fromString(policy), { type: "address" }),
+      xdr.ScVal.scvVoid(),
+    ]);
+    const func = xdr.HostFunction.hostFunctionTypeInvokeContract(
+      new xdr.InvokeContractArgs({
+        contractAddress: Address.fromString(wallet).toScAddress(),
+        functionName: "add_signer",
+        args: [signer],
+      }),
+    );
+    const op = Operation.invokeHostFunction({ func, auth: [] });
+    const src = new Account(Keypair.random().publicKey(), "0");
+    return new TransactionBuilder(src, { fee: "100", networkPassphrase: PASSPHRASE })
+      .addOperation(op)
+      .setTimeout(30)
+      .build()
+      .toXDR();
+  }
+
+  /** A repo pre-seeded with an instance_deployed policy bound to WALLET. */
+  async function seededServer(verifyAttach: (h: string) => Promise<unknown>) {
+    const policies = createMemoryPolicyRepository();
+    const app = buildServer({
+      policies,
+      verifyAttach: verifyAttach as never,
+      network: "testnet",
+      networkPassphrase: PASSPHRASE,
+    });
+    const gen = await app.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    const policy = gen.json().policy as { id: string };
+    const rec = await policies.find(policy.id);
+    await policies.update({
+      ...rec!,
+      status: "instance_deployed",
+      instance: {
+        contractId: POLICY_CONTRACT,
+        wallet: WALLET,
+        txHash: "deploytx",
+        deployedAt: new Date().toISOString(),
+      },
+    });
+    return { app, policyId: policy.id };
+  }
+
+  it("stamps deployed when the attach tx binds this policy to this wallet", async () => {
+    const { app, policyId } = await seededServer(async () => ({
+      status: "SUCCESS",
+      envelopeXdr: addPolicyXdr(WALLET, POLICY_CONTRACT),
+    }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "realhash", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().policy.status).toBe("deployed");
+  });
+
+  it("422s a valid-but-unrelated tx (different policy) — does not stamp", async () => {
+    const other = "CAFK7NMQOT7G2SKMREDUII3EOK4APIY54WIK6CVGY72XWFE76YFRDF67";
+    const { app, policyId } = await seededServer(async () => ({
+      status: "SUCCESS",
+      envelopeXdr: addPolicyXdr(WALLET, other),
+    }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "somehash", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe("attach_mismatch");
+  });
+
+  it("503s (does not stamp) when the RPC can't confirm the tx", async () => {
+    const { app, policyId } = await seededServer(async () => ({ status: "NOT_FOUND" }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "missing", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("attach_unconfirmed");
+  });
+
+  it("503s when the RPC is unreachable (throws)", async () => {
+    const { app, policyId } = await seededServer(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: { policyId, txHash: "x", contractId: POLICY_CONTRACT },
+    });
+    expect(res.statusCode).toBe(503);
+  });
+});
+
 describe("POST /policies/:id/deploy-instance", () => {
   async function generateSpending(server: FastifyInstance) {
     const res = await server.inject({
@@ -221,8 +341,44 @@ describe("POST /policies/:id/deploy-instance", () => {
     // The wallet + the user's chosen limit (100 XLM) reach the deployer.
     expect(deployInstance).toHaveBeenCalledWith({
       wallet: C1,
-      dailyLimitStroops: xlmToStroops("100").toString(),
-      windowSeconds: DEFAULT_WINDOW_SECONDS,
+      constructorArgs: {
+        dailyLimitStroops: xlmToStroops("100").toString(),
+        windowSeconds: DEFAULT_WINDOW_SECONDS,
+      },
+    });
+  });
+
+  it("verified_only: generate bakes the registry, deploy passes it to the deployer", async () => {
+    const { deployer, deployInstance } = stubDeployer();
+    const server = build(deployer);
+
+    const gen = await server.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: {
+        definition: { version: "1", type: "verified_only", owners: [C1] },
+        network: "testnet",
+      },
+    });
+    expect(gen.statusCode).toBe(201);
+    const policy = gen.json().policy as {
+      id: string;
+      manifest: { enforcement: { wasmHash: string; constructorArgs: { registry: string } } };
+    };
+    expect(policy.manifest.enforcement.wasmHash).toBe(VERIFIED_RECIPIENT_WASM_HASH);
+    expect(policy.manifest.enforcement.constructorArgs).toEqual({
+      registry: ATTESTATION_REGISTRY_ID,
+    });
+
+    const res = await server.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(deployInstance).toHaveBeenCalledWith({
+      wallet: C1,
+      constructorArgs: { registry: ATTESTATION_REGISTRY_ID },
     });
   });
 
@@ -317,6 +473,64 @@ describe("POST /policies/:id/deploy-instance", () => {
     expect(res.statusCode).toBe(502);
     expect(res.json().code).toBe("deploy_simulation_failed");
   });
+
+  it("consumes the deploy budget with the deploy fee and proceeds when allowed", async () => {
+    const { deployer, deployInstance } = stubDeployer();
+    const tryConsume = vi.fn().mockResolvedValue({ ok: true });
+    app = buildServer({ deployer, budget: { tryConsume }, budgetNetwork: "testnet" });
+    const policy = await generateSpending(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(tryConsume).toHaveBeenCalledWith({
+      line: "deploy",
+      network: "testnet",
+      stroops: BigInt(DEPLOY_FEE),
+    });
+    expect(deployInstance).toHaveBeenCalled();
+  });
+
+  it("returns 503 (deploy_budget_exceeded) and does NOT deploy when the budget refuses", async () => {
+    const { deployer, deployInstance } = stubDeployer();
+    app = buildServer({
+      deployer,
+      budget: { tryConsume: async () => ({ ok: false, reason: "budget_exceeded" }) },
+      budgetNetwork: "testnet",
+    });
+    const policy = await generateSpending(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("deploy_budget_exceeded");
+    expect(deployInstance).not.toHaveBeenCalled();
+  });
+
+  it("fails closed: a budget accounting error refuses the deploy", async () => {
+    const { deployer, deployInstance } = stubDeployer();
+    app = buildServer({
+      deployer,
+      budget: {
+        tryConsume: async () => {
+          throw new Error("db down");
+        },
+      },
+      budgetNetwork: "testnet",
+    });
+    const policy = await generateSpending(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(deployInstance).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /policies/:id/simulate", () => {
@@ -342,8 +556,10 @@ describe("POST /policies/:id/simulate", () => {
     expect(res.json()).toEqual({ ok: true, minResourceFee: "12345" });
     expect(simulateInstance).toHaveBeenCalledWith({
       wallet: C1,
-      dailyLimitStroops: xlmToStroops("100").toString(),
-      windowSeconds: DEFAULT_WINDOW_SECONDS,
+      constructorArgs: {
+        dailyLimitStroops: xlmToStroops("100").toString(),
+        windowSeconds: DEFAULT_WINDOW_SECONDS,
+      },
     });
     // Simulation must never submit.
     expect(deployInstance).not.toHaveBeenCalled();

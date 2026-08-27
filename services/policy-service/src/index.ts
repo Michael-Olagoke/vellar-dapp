@@ -1,8 +1,35 @@
-import { portFromEnv, startService, tryConnectDb } from "@vellar/service-kit";
+import {
+  budgetLimitsFromEnv,
+  createPgSpendBudget,
+  createUnavailableBudget,
+  hostFromEnv,
+  portFromEnv,
+  resolveNetwork,
+  resolvePersistencePolicy,
+  startService,
+  tryConnectDb,
+  type SpendBudget,
+} from "@vellar/service-kit";
+import type { DbHandle } from "./db/client";
 import { configFromEnv } from "./config";
 import { createPolicyDeployer } from "./deploy";
 import { buildServer, type PolicyServiceDeps } from "./server";
 import { SPENDING_POLICY_WASM_HASH } from "./templates";
+
+// FIX 3 deploy budget: 20 XLM / 20 deploys per 1h window, env-overridable.
+const BUDGET_WINDOW_MS = Number(process.env.BUDGET_WINDOW_MS) || 3_600_000;
+const deployLimits = {
+  deploy: budgetLimitsFromEnv(
+    { maxXlmVar: "BUDGET_DEPLOY_MAX_XLM", maxCountVar: "BUDGET_DEPLOY_MAX_COUNT" },
+    { defaultMaxXlm: 20, defaultMaxCount: 20 },
+  ),
+  // Unused here but keeps the Record<line> shape the budget expects.
+  sponsor: budgetLimitsFromEnv(
+    { maxXlmVar: "BUDGET_SPONSOR_MAX_XLM", maxCountVar: "BUDGET_SPONSOR_MAX_COUNT" },
+    { defaultMaxXlm: 50, defaultMaxCount: 500 },
+  ),
+  create: budgetLimitsFromEnv({ maxCountVar: "BUDGET_CREATE_MAX_COUNT" }, { defaultMaxCount: 30 }),
+};
 
 const config = configFromEnv();
 const deps: PolicyServiceDeps = {};
@@ -22,20 +49,70 @@ deps.deployer = config.sponsorSecretKey
 
 // Postgres-backed policy store when configured; otherwise in-memory (dev only).
 let closeDb: (() => Promise<void>) | undefined;
+let dbHandle: DbHandle | undefined;
 if (config.databaseUrl) {
   const databaseUrl = config.databaseUrl;
   const { connectDb } = await import("./db/client");
   const { createPgPolicyRepository } = await import("./db/pg-repository");
-  // Degrade to in-memory (with an actionable warning) if Postgres is
-  // unreachable, rather than crashing the service with a raw ECONNREFUSED.
   const handle = await tryConnectDb(() => connectDb(databaseUrl), {
     databaseUrl,
     log: { warn: (message) => console.warn(message) },
   });
   if (handle) {
+    dbHandle = handle;
     deps.policies = createPgPolicyRepository(handle.db);
     closeDb = handle.close;
   }
+}
+
+// FIX 7 (M6): fail closed in production before serving. The sponsor-funded
+// deploy budget (FIX 3) lives here and needs durable state.
+const policy = resolvePersistencePolicy({
+  databaseUrl: config.databaseUrl,
+  nodeEnv: process.env.NODE_ENV,
+  connected: config.databaseUrl ? dbHandle !== undefined : undefined,
+  allowInmemory: process.env.ALLOW_INMEMORY === "1",
+});
+if (policy.action === "fail") {
+  console.error(`[policy-service] ${policy.reason}`);
+  process.exit(1);
+}
+deps.isReady = dbHandle ? () => dbHandle!.ping() : () => policy.action === "allow-inmemory";
+
+// FIX 3 deploy budget: Postgres-backed when durable, else fail-closed stub.
+// Network label from server config, never a request body (V5).
+// RA-10 class: derive the spend-budget ledger label + the verify-attach network
+// from the EXPLICIT, required STELLAR_NETWORK (cross-checked vs passphrase + RPC),
+// not from a passphrase that defaults to testnet. An incoherent/missing network
+// refuses to boot — a service that can't tell which network it's on must not
+// meter spend or stamp a deploy 'deployed'. Server config, never a request body
+// (V5).
+deps.budgetNetwork = resolveNetwork({
+  network: process.env.STELLAR_NETWORK,
+  passphrase: config.networkPassphrase,
+  rpcUrl: config.rpcUrl,
+});
+const budget: SpendBudget = dbHandle
+  ? createPgSpendBudget(dbHandle.db, { windowMs: BUDGET_WINDOW_MS, limits: deployLimits })
+  : createUnavailableBudget();
+deps.budget = budget;
+
+// L1 attach verification: /policies/deploy verifies the attach tx against the
+// server-config network's RPC before stamping 'deployed'. Bound to config's RPC
+// + passphrase, never the request body (V5).
+{
+  const { rpc } = await import("@stellar/stellar-sdk");
+  const rpcServer = new rpc.Server(config.rpcUrl);
+  deps.network = deps.budgetNetwork;
+  deps.networkPassphrase = config.networkPassphrase;
+  deps.verifyAttach = async (txHash: string) => {
+    const res = await rpcServer.getTransaction(txHash);
+    if (res.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      return { status: "SUCCESS", envelopeXdr: res.envelopeXdr?.toXDR("base64") };
+    }
+    if (res.status === rpc.Api.GetTransactionStatus.NOT_FOUND) return { status: "NOT_FOUND" };
+    return { status: "FAILED" };
+  };
 }
 
 const app = buildServer(deps);
@@ -48,8 +125,12 @@ if (!deps.deployer) {
 }
 if (!config.databaseUrl) {
   app.log.warn(
-    "DATABASE_URL not set — using an in-memory policy store; policies will NOT survive a restart.",
+    "DATABASE_URL not set — using an in-memory policy store; policies will NOT survive a restart. " +
+      "(ALLOW_INMEMORY explicitly permits this; production without it refuses to boot.)",
   );
 }
 
-await startService(app, { port: portFromEnv("POLICY_SERVICE_PORT", 4003) });
+await startService(app, {
+  port: portFromEnv("POLICY_SERVICE_PORT", 4003),
+  host: hostFromEnv("127.0.0.1"),
+});

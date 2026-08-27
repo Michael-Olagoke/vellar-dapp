@@ -1,6 +1,12 @@
 import { Buffer } from "buffer";
+import type { xdr } from "@stellar/stellar-sdk";
 import type { Signer } from "passkey-kit";
 import { signWithDeviceKey } from "./device-key";
+import {
+  boundedExpirationLedger,
+  configuredMainnetRpcUrl,
+  resolveTrustedRpcUrl,
+} from "./signer-expiration";
 import type { PairedWallet } from "./state";
 
 // Transaction signing with the device signer (docs/decisions.md option 1A).
@@ -44,11 +50,18 @@ export async function signTransactionXdr(input: {
   wallet: PairedWallet;
   deviceKeyPair: CryptoKeyPair;
   deviceRawPublicKey: Uint8Array;
+  /** Fetch the current ledger sequence from the TRUSTED per-network RPC (L4).
+   * Injectable for tests; defaults to a live getLatestLedger against the
+   * pinned/configured trusted endpoint — never the caller-supplied rpcUrl. */
+  getTrustedLatestLedger?: (rpcUrl: string) => Promise<number>;
+  /** Build-time mainnet trusted RPC (WXT_PUBLIC_MAINNET_RPC_URL). Injectable
+   * for tests; defaults to the env value. */
+  mainnetRpcUrl?: string;
 }): Promise<string> {
   const { wallet } = input;
   const networkPassphrase = NETWORK_PASSPHRASES[wallet.network];
 
-  const [{ PasskeyKit }, { Address, TransactionBuilder }] = await Promise.all([
+  const [{ PasskeyKit }, { Address, TransactionBuilder, xdr }] = await Promise.all([
     import("passkey-kit"),
     import("@stellar/stellar-sdk"),
   ]);
@@ -63,10 +76,40 @@ export async function signTransactionXdr(input: {
     throw new PairedWalletMismatchError(wallet.address, kit.contractId);
   }
 
+  // L4: anchor the signature-expiration ledger on a TRUSTED RPC, then cap the
+  // window — so the caller-supplied wallet.rpcUrl can never widen it. Fails
+  // closed if no trusted RPC exists (e.g. mainnet with none configured).
+  const trustedRpcUrl = resolveTrustedRpcUrl(
+    wallet.network,
+    input.mainnetRpcUrl ?? configuredMainnetRpcUrl(),
+  );
+  const fetchLedger = input.getTrustedLatestLedger ?? defaultTrustedLatestLedger;
+  const anchorLedger = await fetchLedger(trustedRpcUrl);
+  const expiration = boundedExpirationLedger(anchorLedger);
+
   const tx = TransactionBuilder.fromXDR(input.xdr, networkPassphrase);
   if (!("operations" in tx)) {
     throw new Error("Fee-bump transactions cannot be signed by the extension");
   }
+
+  // The SorobanAddressCredentials across every address-bound variant, or
+  // undefined for source-account. passkey-kit@0.14 signs V2 (upgrades V1 in
+  // place, auth-payload.js:67), so a V1-only match (RA-1) skipped the wallet's
+  // real entries and signed nothing. All three arms wrap the same struct.
+  const addrCreds = (
+    creds: ReturnType<xdr.SorobanAuthorizationEntry["credentials"]>,
+  ): xdr.SorobanAddressCredentials | undefined => {
+    switch (creds.switch().name) {
+      case "sorobanCredentialsAddress":
+        return creds.address();
+      case "sorobanCredentialsAddressV2":
+        return creds.addressV2();
+      case "sorobanCredentialsAddressWithDelegates":
+        return creds.addressWithDelegates().addressCredentials();
+      default:
+        return undefined; // sorobanCredentialsSourceAccount — not a wallet subject
+    }
+  };
 
   const signer = createDeviceSigner(input.deviceKeyPair, input.deviceRawPublicKey);
   let signedAny = false;
@@ -75,12 +118,12 @@ export async function signTransactionXdr(input: {
     if (operation.type !== "invokeHostFunction" || !operation.auth) continue;
     for (let i = 0; i < operation.auth.length; i++) {
       const entry = operation.auth[i]!;
-      if (entry.credentials().switch().name !== "sorobanCredentialsAddress") continue;
-      const entryAddress = Address.fromScAddress(
-        entry.credentials().address().address(),
-      ).toString();
-      if (entryAddress !== wallet.address) continue;
-      operation.auth[i] = await kit.signAuthEntry(entry, signer);
+      const creds = addrCreds(entry.credentials());
+      if (!creds) continue;
+      if (Address.fromScAddress(creds.address()).toString() !== wallet.address) continue;
+      // Explicit expiration ⇒ the kit does NOT call getLatestLedger on the
+      // caller's rpcUrl (L4).
+      operation.auth[i] = await kit.signAuthEntry(entry, signer, { expiration });
       signedAny = true;
     }
   }
@@ -90,4 +133,13 @@ export async function signTransactionXdr(input: {
   }
 
   return tx.toXDR();
+}
+
+/** Live getLatestLedger against the trusted RPC. A transport failure PROPAGATES
+ * (fail closed) — we never fall back to the caller-supplied rpcUrl (L4). */
+async function defaultTrustedLatestLedger(rpcUrl: string): Promise<number> {
+  const { rpc } = await import("@stellar/stellar-sdk");
+  const server = new rpc.Server(rpcUrl);
+  const { sequence } = await server.getLatestLedger();
+  return sequence;
 }

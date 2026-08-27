@@ -1,3 +1,4 @@
+import type { Attestor } from "./attestor";
 import type { VerificationJobStore } from "./job-store";
 import { runVerification, type RunVerificationDeps } from "./verify";
 
@@ -21,6 +22,10 @@ export interface WorkerDeps extends RunVerificationDeps {
   batchSize?: number;
   log?: { info: (msg: string) => void; error: (msg: string, err?: unknown) => void };
   metrics?: WorkerMetrics;
+  /** Optional on-chain attestation mirror. Called after each outcome is
+   * persisted; the attestor swallows its own errors, so attestation can never
+   * fail or retry a verification job. */
+  attestor?: Attestor;
 }
 
 const silentLog = { info: () => {}, error: () => {} };
@@ -47,6 +52,8 @@ export async function runWorkerTick(deps: WorkerDeps): Promise<number> {
         job.submittedAtMs !== undefined ? (Date.now() - job.submittedAtMs) / 1000 : undefined;
       metrics.verificationResult(outcome.status, turnaround);
       log.info(`verification ${job.recordId} → ${outcome.status} (${job.contractId})`);
+      // Mirror the outcome on-chain (best-effort; never throws).
+      if (deps.attestor) await deps.attestor.reportOutcome(job.contractId, outcome);
     } catch (err) {
       // runVerification only throws on truly unexpected errors; leave the record
       // "building" so it can be retried, and keep processing the batch.

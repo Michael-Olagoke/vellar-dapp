@@ -9,6 +9,7 @@ import {
   type PasskeySupport,
 } from "@vellar/passkey";
 import type { PasskeyEnvironment } from "@vellar/passkey";
+import { LpActionButton } from "@/app/landing/ui";
 import { walletConfig } from "@/lib/config";
 import { walletErrorMessage } from "@/lib/messages";
 import { useWalletActions } from "@/lib/wallet-context";
@@ -54,19 +55,19 @@ export function OnboardingActions({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
-      <label className="field" style={{ display: "block" }}>
-        <span className="lbl">Wallet name (optional)</span>
+    <div className="flex flex-col gap-3 text-left">
+      <label className="lpa-field">
+        <span className="flabel">Wallet name (optional)</span>
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="e.g. dumto"
           disabled={disabled}
-          style={{ marginTop: 6, fontSize: 15 }}
         />
       </label>
-      <div style={{ display: "flex", gap: 12 }}>
-        <button
+      <div className="flex gap-3">
+        <LpActionButton
+          className="flex-1"
           onClick={() =>
             void run("create", () =>
               actions.createWallet({
@@ -76,29 +77,27 @@ export function OnboardingActions({
             )
           }
           disabled={disabled}
-          className="btn btn-signal"
-          style={{ flex: 1 }}
         >
           {busy === "create" ? "Creating…" : "Create wallet"}
-        </button>
-        <button
+        </LpActionButton>
+        <LpActionButton
+          variant="outline"
+          className="flex-1"
           onClick={() => void run("connect", () => actions.connectWallet(config.network))}
           disabled={disabled}
-          className="btn btn-dark"
-          style={{ flex: 1 }}
         >
           {busy === "connect" ? "Signing in…" : "Sign in"}
-        </button>
+        </LpActionButton>
       </div>
       {unsupported && (
-        <p role="alert" style={{ fontSize: 13, color: "var(--lime)" }}>
+        <p role="alert" className="lpa-bad text-[13px]">
           {support?.supported === false && support.reason === "insecure-context"
             ? "Passkeys need a secure (HTTPS) connection."
             : "This browser doesn't support passkeys. Try a current version of Chrome, Safari, Edge, or Firefox."}
         </p>
       )}
       {error && (
-        <p role="alert" style={{ fontSize: 13, color: "var(--negative)" }}>
+        <p role="alert" className="lpa-bad text-[13px]">
           {error}
         </p>
       )}

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { CleanupPlan } from "@vellar/types";
 import { AppShell } from "@/components/app-shell";
+import { Eyebrow, LpActionButton } from "@/app/landing/ui";
+import { CopyIcon } from "@/components/icons";
 import {
   buildMerge,
   executeCleanup,
@@ -13,15 +15,23 @@ import {
 } from "@/lib/lifecycle";
 
 // Guided cleanup wizard (technical-doc.md §5.6, §7.7; idea.md §6.4 flow +
-// §19 decision 4: explicit review, never one-click). VELA plans and watches;
+// §19 decision 4: explicit review, never one-click). Vellar plans and watches;
 // the user signs each UNSIGNED transaction in the wallet that holds the old
-// account's key (decisions.md option A). Styling is intentionally utilitarian
-// pending the design-system overhaul.
+// account's key (decisions.md option A).
 
 type Wizard =
   | { stage: "input" }
   | { stage: "plan"; plan: CleanupPlan }
-  | { stage: "cleanup"; step: CleanupStep; watching: boolean; timedOut: boolean }
+  // Cleanup may be SPLIT into multiple transactions (>100 ops); `steps` holds
+  // all of them and `index` is the one the user is signing now. The wizard walks
+  // every step in order before it advances to the merge.
+  | {
+      stage: "cleanup";
+      steps: CleanupStep[];
+      index: number;
+      watching: boolean;
+      timedOut: boolean;
+    }
   | { stage: "merge"; step: CleanupStep; watching: boolean; timedOut: boolean }
   | { stage: "done" };
 
@@ -33,12 +43,16 @@ export default function Cleanup() {
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
-  useEffect(
-    () => () => {
+  // The unmount cleanup LATCHES cancelledRef, so every (re)mount must un-latch
+  // it. React StrictMode mounts → unmounts → remounts, so without the reset the
+  // remounted wizard is born cancelled: watch() bails out on its first check and
+  // the flow stalls on "Waiting for this transaction…" forever.
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
       cancelledRef.current = true;
-    },
-    [],
-  );
+    };
+  }, []);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -62,9 +76,8 @@ export default function Cleanup() {
     run(async () => {
       const { steps } = await executeCleanup(accountId.trim(), destination.trim());
       if (steps.length === 0) return startMerge();
-      const step = steps[0]!;
-      setWizard({ stage: "cleanup", step, watching: true, timedOut: false });
-      void watch(step, "cleanup");
+      setWizard({ stage: "cleanup", steps, index: 0, watching: true, timedOut: false });
+      void watchCleanup(steps, 0);
     });
 
   const startMerge = () =>
@@ -74,31 +87,43 @@ export default function Cleanup() {
       void watch(step, "merge");
     });
 
-  async function watch(step: CleanupStep, stage: "cleanup" | "merge") {
+  // Walk each cleanup chunk in order: watch chunk `index`, and on confirmation
+  // advance to the next chunk (not straight to merge) until all are signed —
+  // only then build the merge. Dropping chunks 2..N left large accounts
+  // partially cleaned and dead-ended at a 409-on-merge.
+  async function watchCleanup(steps: CleanupStep[], index: number) {
+    const step = steps[index]!;
+    const seen = await watchTransaction(step.hash, { cancelled: () => cancelledRef.current });
+    if (cancelledRef.current) return;
+    if (!seen) {
+      setWizard({ stage: "cleanup", steps, index, watching: false, timedOut: true });
+      return;
+    }
+    const next = index + 1;
+    if (next < steps.length) {
+      setWizard({ stage: "cleanup", steps, index: next, watching: true, timedOut: false });
+      void watchCleanup(steps, next);
+    } else {
+      await startMerge();
+    }
+  }
+
+  async function watch(step: CleanupStep, stage: "merge") {
     const seen = await watchTransaction(step.hash, { cancelled: () => cancelledRef.current });
     if (cancelledRef.current) return;
     if (!seen) {
       setWizard({ stage, step, watching: false, timedOut: true });
       return;
     }
-    if (stage === "cleanup") await startMerge();
-    else setWizard({ stage: "done" });
+    setWizard({ stage: "done" });
   }
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 720, display: "flex", flexDirection: "column", gap: 22 }}>
+      <div className="flex max-w-[720px] flex-col gap-5">
         <header>
-          <h1 style={{ fontSize: "clamp(1.8rem,4vw,2.4rem)" }}>Close an old account</h1>
-          <p
-            style={{
-              marginTop: 12,
-              maxWidth: 620,
-              fontSize: 15,
-              color: "var(--muted)",
-              lineHeight: 1.6,
-            }}
-          >
+          <h1>Close an old account</h1>
+          <p className="mt-3! max-w-[620px] text-[15px] leading-relaxed text-[var(--lp-ink-soft)]">
             Inspect a classic (G…) Stellar account, clear everything blocking its closure, and merge
             its XLM into another account. Vellar prepares each transaction — you sign in the wallet
             that holds the old account&apos;s key.
@@ -106,17 +131,8 @@ export default function Cleanup() {
         </header>
 
         {wizard.stage === "input" && (
-          <section
-            className="neo"
-            style={{
-              padding: 22,
-              maxWidth: 560,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <label className="form-field">
+          <section className="lpa-panel flex max-w-[560px] flex-col gap-3">
+            <label className="lpa-field">
               <span className="flabel">Old account to close (G…)</span>
               <input
                 value={accountId}
@@ -124,7 +140,7 @@ export default function Cleanup() {
                 placeholder="G..."
               />
             </label>
-            <label className="form-field">
+            <label className="lpa-field">
               <span className="flabel">Destination for the reclaimed XLM (G…)</span>
               <input
                 value={destination}
@@ -132,119 +148,110 @@ export default function Cleanup() {
                 placeholder="G... (classic account, not your smart wallet)"
               />
             </label>
-            <button
+            <LpActionButton
+              className="self-start"
               onClick={() => void inspect()}
               disabled={busy || !accountId.trim() || !destination.trim()}
-              className="btn btn-signal"
-              style={{ alignSelf: "flex-start" }}
             >
               {busy ? "Inspecting…" : "Inspect account"}
-            </button>
+            </LpActionButton>
           </section>
         )}
 
         {wizard.stage === "plan" && (
-          <section
-            className="neo"
-            style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}
-          >
-            <span className="eyebrow">Cleanup plan</span>
+          <section className="lpa-panel flex flex-col gap-4">
+            <Eyebrow>Cleanup plan</Eyebrow>
             {wizard.plan.mergeReady ? (
-              <span
-                className="verified"
-                style={{ alignSelf: "flex-start", color: "var(--signal)" }}
-              >
+              <span className="lpa-ok self-start text-sm font-bold">
                 ✓ Nothing blocks this account — it can be merged in a single transaction
               </span>
             ) : (
-              <ul
-                style={{
-                  listStyle: "none",
-                  margin: 0,
-                  padding: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
+              <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
                 {wizard.plan.blockers.map((blocker, i) => (
-                  <li key={i} className="neo-inset" style={{ fontSize: 14, padding: "14px 16px" }}>
-                    <span
-                      className="lbl"
-                      style={{
-                        marginRight: 8,
-                        background: "rgba(255,255,255,0.06)",
-                        borderRadius: 8,
-                        padding: "2px 8px",
-                      }}
-                    >
+                  <li key={i} className="lpa-well text-sm">
+                    <span className="mr-2 bg-[var(--lp-sun-soft)] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">
                       {blocker.type}
                     </span>
                     {blocker.description}
-                    <p style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)" }}>
+                    <p className="mt-1.5! text-xs text-[var(--lp-ink-faint)]">
                       {blocker.actionRequired}
                     </p>
                   </li>
                 ))}
               </ul>
             )}
-            <p style={{ fontSize: 12, color: "var(--muted2)" }}>
+            <p className="text-xs text-[var(--lp-ink-faint)]">
               Estimated transactions: {wizard.plan.estimatedTransactions}
             </p>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button
+            <div className="flex gap-3">
+              <LpActionButton
                 onClick={() => void (wizard.plan.mergeReady ? startMerge() : startCleanup())}
                 disabled={busy}
-                className="btn btn-signal"
               >
                 {wizard.plan.mergeReady ? "Proceed to merge" : "Start cleanup"}
-              </button>
-              <button
+              </LpActionButton>
+              <LpActionButton
+                variant="outline"
                 onClick={() => setWizard({ stage: "input" })}
                 disabled={busy}
-                className="btn btn-dark"
               >
                 Back
-              </button>
+              </LpActionButton>
             </div>
           </section>
         )}
 
-        {(wizard.stage === "cleanup" || wizard.stage === "merge") && (
+        {wizard.stage === "cleanup" && (
           <SigningStepCard
-            step={wizard.step}
-            isMerge={wizard.stage === "merge"}
+            step={wizard.steps[wizard.index]!}
+            isMerge={false}
+            progress={
+              wizard.steps.length > 1
+                ? { current: wizard.index + 1, total: wizard.steps.length }
+                : undefined
+            }
             watching={wizard.watching}
             timedOut={wizard.timedOut}
             onKeepWaiting={() => {
               setWizard({ ...wizard, watching: true, timedOut: false });
-              void watch(wizard.step, wizard.stage);
+              void watchCleanup(wizard.steps, wizard.index);
+            }}
+          />
+        )}
+
+        {wizard.stage === "merge" && (
+          <SigningStepCard
+            step={wizard.step}
+            isMerge
+            watching={wizard.watching}
+            timedOut={wizard.timedOut}
+            onKeepWaiting={() => {
+              setWizard({ ...wizard, watching: true, timedOut: false });
+              void watch(wizard.step, "merge");
             }}
           />
         )}
 
         {wizard.stage === "done" && (
-          <section
-            className="neo"
-            style={{ padding: 22, display: "flex", flexDirection: "column" }}
-          >
-            <span className="verified" style={{ color: "var(--signal)" }}>
+          <section className="lpa-panel flex flex-col">
+            <span className="lpa-ok text-sm font-bold">
               ✓ Account closed — its entire XLM balance now lives at the destination
             </span>
             <div>
-              <button
+              <LpActionButton
+                variant="outline"
+                size="sm"
+                className="mt-3.5"
                 onClick={() => setWizard({ stage: "input" })}
-                className="btn btn-dark btn-sm"
-                style={{ marginTop: 14 }}
               >
                 Clean up another account
-              </button>
+              </LpActionButton>
             </div>
           </section>
         )}
 
         {error && (
-          <p role="alert" style={{ fontSize: 14, color: "var(--negative)" }}>
+          <p role="alert" className="lpa-bad text-sm">
             {error}
           </p>
         )}
@@ -256,12 +263,15 @@ export default function Cleanup() {
 function SigningStepCard({
   step,
   isMerge,
+  progress,
   watching,
   timedOut,
   onKeepWaiting,
 }: {
   step: CleanupStep;
   isMerge: boolean;
+  /** For a split cleanup: which transaction of how many. */
+  progress?: { current: number; total: number };
   watching: boolean;
   timedOut: boolean;
   onKeepWaiting: () => void;
@@ -269,17 +279,16 @@ function SigningStepCard({
   const [copied, setCopied] = useState(false);
 
   return (
-    <section
-      className="neo"
-      style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12 }}
-    >
-      <span className="eyebrow">{step.title}</span>
-      <p style={{ fontSize: 14, color: "var(--muted)" }}>{step.description}</p>
+    <section className="lpa-panel flex flex-col gap-3">
+      <Eyebrow>{step.title}</Eyebrow>
+      {progress && (
+        <p className="text-[13px] text-[var(--lp-ink-faint)]">
+          Transaction {progress.current} of {progress.total} — sign and submit each in order.
+        </p>
+      )}
+      <p className="text-sm text-[var(--lp-ink-soft)]">{step.description}</p>
       {isMerge && (
-        <p
-          className="neo-inset"
-          style={{ fontSize: 14, color: "var(--lime)", padding: "14px 16px" }}
-        >
+        <p className="lpa-well border-l-[3px]! border-l-[var(--lp-sun)]! text-sm">
           Final step: merging closes the account permanently. Review carefully before signing.
         </p>
       )}
@@ -287,39 +296,39 @@ function SigningStepCard({
         readOnly
         value={step.xdr}
         rows={4}
-        className="neo-inset mono"
-        style={{ width: "100%", fontSize: 12, color: "var(--muted2)", resize: "vertical" }}
+        className="lpa-well w-full resize-y font-[family-name:var(--lp-mono)] text-xs text-[var(--lp-ink-faint)]"
       />
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14 }}>
-        <button
+      <div className="flex flex-wrap items-center gap-3.5">
+        <LpActionButton
+          variant="outline"
+          size="sm"
           onClick={() => {
             void navigator.clipboard.writeText(step.xdr).then(() => setCopied(true));
           }}
-          className="btn btn-dark btn-sm"
         >
-          {copied ? "Copied" : "Copy XDR"}
-        </button>
+          <CopyIcon /> {copied ? "Copied" : "Copy XDR"}
+        </LpActionButton>
         <a
           href={labSignUrl(step.xdr)}
           target="_blank"
           rel="noreferrer"
-          style={{ fontSize: 14, color: "var(--signal)" }}
+          className="text-sm font-bold underline decoration-[var(--lp-mint)] decoration-2 underline-offset-2"
         >
           Open in Stellar Laboratory →
         </a>
       </div>
       {watching && (
-        <p className="animate-pulse" style={{ fontSize: 14, color: "var(--muted2)" }}>
+        <p className="animate-pulse text-sm text-[var(--lp-ink-faint)]">
           Waiting for this transaction to appear on the network… sign and submit it in your wallet;
           this page advances automatically.
         </p>
       )}
       {timedOut && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 14 }}>
-          <p style={{ color: "var(--muted)" }}>Not seen on the network yet.</p>
-          <button onClick={onKeepWaiting} className="btn btn-dark btn-sm">
+        <div className="flex items-center gap-3 text-sm">
+          <p className="text-[var(--lp-ink-soft)]">Not seen on the network yet.</p>
+          <LpActionButton variant="outline" size="sm" onClick={onKeepWaiting}>
             Keep waiting
-          </button>
+          </LpActionButton>
         </div>
       )}
     </section>

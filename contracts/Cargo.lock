@@ -1708,6 +1708,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "vela-attestation-registry"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "vela-spending-limit-policy"
 version = "0.1.0"
 dependencies = [
@@ -1723,6 +1731,16 @@ dependencies = [
  "ed25519-dalek",
  "smart-wallet-interface",
  "soroban-sdk",
+]
+
+[[package]]
+name = "vela-verified-recipient-policy"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "smart-wallet-interface",
+ "soroban-sdk",
+ "vela-attestation-registry",
 ]
 
 [[package]]

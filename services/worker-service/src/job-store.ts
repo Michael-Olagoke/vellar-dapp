@@ -1,5 +1,4 @@
-import type { VerificationStatus } from "@vellar/types";
-import type { VerificationJobInput } from "./verify";
+import type { VerificationJobInput, VerificationOutcome } from "./verify";
 
 // The worker's view of the shared verification store. verification-service
 // writes "submitted" records; the worker claims them (submitted → building),
@@ -15,18 +14,37 @@ export interface ClaimedJob extends VerificationJobInput {
   submittedAtMs?: number;
 }
 
+export interface ReapResult {
+  /** Stranded 'building' rows returned to 'submitted' for another attempt. */
+  reclaimed: number;
+  /** Rows that hit maxAttempts and were parked in 'dead_letter'. */
+  deadLettered: number;
+}
+
 export interface VerificationJobStore {
   /** Atomically claim up to `limit` submitted jobs, flipping them to "building".
    * Returns the claimed jobs (empty when the queue is idle). */
   claimSubmitted(limit: number): Promise<ClaimedJob[]>;
   /** Record a terminal outcome for a claimed job. */
-  complete(
-    recordId: string,
-    result: {
-      status: Extract<VerificationStatus, "verified" | "failed">;
-      outputHash?: string;
-      deployedHash?: string;
-      log: string;
-    },
-  ): Promise<void>;
+  complete(recordId: string, result: VerificationOutcome): Promise<void>;
+  /** Reaper (security-audit.md M7): reclaim rows stuck in 'building' longer than
+   * `timeoutMs` (a crashed/hung worker never completed them). Each reclaim bumps
+   * an attempt counter; a row that has already been attempted `maxAttempts`
+   * times is parked in 'dead_letter' instead of re-queued, so a poisoned job
+   * can't loop forever. `nowMs` is injectable for tests. */
+  reapStranded(opts: {
+    timeoutMs: number;
+    maxAttempts: number;
+    nowMs?: number;
+  }): Promise<ReapResult>;
+  /** Count of ACTIVE records (submitted + building) — the queue-depth control
+   * for /verification/submit (M7). */
+  countActive(): Promise<number>;
+  /** True when the contract already has an active (submitted|building) record —
+   * per-contractId dedup for /verification/submit (M7). */
+  hasActiveForContract(contractId: string): Promise<boolean>;
+  /** The attestor's upgrade-sweep watch list: per contract, the LATEST terminal
+   * record — included only when that latest run is `verified` (a later failed
+   * run supersedes an older verified one) and carries the rebuilt hash. */
+  listLatestVerified(limit: number): Promise<Array<{ contractId: string; outputHash: string }>>;
 }

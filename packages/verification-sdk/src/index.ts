@@ -9,9 +9,12 @@ import type { VerificationRecord, VerificationStatus } from "@vellar/types";
 
 export type { VerificationRecord, VerificationStatus };
 
-/** A public verification record as returned by the API (build log included). */
+/** A public verification record as returned by the API. The raw build log is
+ * NOT exposed (H3/FIX 6 — it leaked host paths / internal IPs); the API returns
+ * a sanitized `statusDetail` instead. */
 export interface PublicVerificationRecord extends VerificationRecord {
-  log?: string;
+  /** Sanitized, public-safe failure/status detail (e.g. "Build failed (clone_failed)."). */
+  statusDetail?: string;
 }
 
 /** The cheap trust-signal lookup used by the badge. */

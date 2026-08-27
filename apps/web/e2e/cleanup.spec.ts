@@ -133,6 +133,99 @@ test.describe("inspect and close account (mocked gateway + Horizon) @ci", () => 
     expect(called.merge).toBe(true);
   });
 
+  test("multi-transaction split: signs EVERY cleanup chunk before merging (FIX C)", async ({
+    page,
+  }) => {
+    // A >100-op account splits cleanup into multiple txs. The wizard must walk
+    // ALL chunks, then merge. The old wizard signed only steps[0] and dead-ended
+    // at a 409-on-merge; here, reaching "Account closed" proves both chunks were
+    // watched (the Horizon mock sees every tx, so getting to merge requires the
+    // full walk) and we assert the SECOND chunk's tx was polled.
+    const seen = new Set<string>();
+    await page.route("**/transactions/**", async (route) => {
+      seen.add(new URL(route.request().url()).pathname.split("/").pop() ?? "");
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ successful: true }),
+      });
+    });
+    await page.route("**/lifecycle/**", async (route) => {
+      const url = route.request().url();
+      if (url.endsWith("/lifecycle/plan")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            plan: {
+              accountId: OLD_ACCOUNT,
+              destination: DESTINATION,
+              mergeReady: false,
+              estimatedTransactions: 3,
+              blockers: [
+                { type: "data", description: "Many data entries", actionRequired: "Delete them" },
+              ],
+            },
+          }),
+        });
+        return;
+      }
+      if (url.endsWith("/lifecycle/execute")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            steps: [
+              {
+                title: "Clean up the account (1/2)",
+                description: "Sign chunk 1",
+                hash: "chunk1hash",
+                xdr: "AAAA...chunk1",
+              },
+              {
+                title: "Clean up the account (2/2)",
+                description: "Sign chunk 2",
+                hash: "chunk2hash",
+                xdr: "AAAA...chunk2",
+              },
+            ],
+          }),
+        });
+        return;
+      }
+      if (url.endsWith("/lifecycle/merge")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            step: {
+              title: "Merge account",
+              description: "Sign this to merge and close",
+              hash: "mergehash",
+              xdr: "AAAA...merge",
+            },
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/cleanup");
+    await page.getByPlaceholder("G...", { exact: true }).fill(OLD_ACCOUNT);
+    await page.getByPlaceholder(/classic account, not your smart wallet/).fill(DESTINATION);
+    await page.getByRole("button", { name: "Inspect account" }).click();
+    await expect(page.getByText("Cleanup plan")).toBeVisible();
+    await page.getByRole("button", { name: "Start cleanup" }).click();
+
+    // Reaching the terminal state requires walking BOTH cleanup chunks then the
+    // merge — the old single-chunk wizard would stall at merge (409) here.
+    await expect(page.getByText(/Account closed/i)).toBeVisible();
+    // The second chunk's tx was actually watched (not dropped).
+    expect(seen.has("chunk2hash")).toBe(true);
+    expect(seen.has("mergehash")).toBe(true);
+  });
+
   test("fast path: already merge-ready → straight to merge → closed", async ({ page }) => {
     await page.route("**/lifecycle/**", async (route) => {
       const url = route.request().url();
