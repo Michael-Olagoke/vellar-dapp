@@ -8,10 +8,16 @@ import { runVerification, type RunVerificationDeps } from "./verify";
 
 /** Observability hook (idea.md §13): the loop reports each verification outcome
  * + turnaround and any unexpected worker failure. Optional + defaulted so the
- * loop stays a pure, injectable unit in tests. */
+ * loop stays a pure, injectable unit in tests.
+ *
+ * ISSUE #295: Added verificationRetry metric to track retry attempts for jobs
+ * that succeeded or failed after transient errors. */
 export interface WorkerMetrics {
   verificationResult(outcome: "verified" | "failed", turnaroundSeconds?: number): void;
   workerFailure(): void;
+  /** Emitted when a job succeeds or fails after one or more transient retries.
+   * Allows tracking how many retry attempts were required. */
+  verificationRetry?(retryCount: number, finalOutcome: "verified" | "failed"): void;
 }
 
 const noopMetrics: WorkerMetrics = { verificationResult: () => {}, workerFailure: () => {} };
@@ -36,6 +42,9 @@ const silentLog = { info: () => {}, error: () => {} };
  * (idle). A single job failing (unexpected throw) is logged and does not abort
  * the rest of the batch — the record is left "building" and re-claimable after
  * a timeout in production (retryable per idea.md §13).
+ *
+ * ISSUE #295: Tracks retry attempts via outcome.retryAttempt and emits
+ * verificationRetry metric when a job completes after retries.
  */
 export async function runWorkerTick(deps: WorkerDeps): Promise<number> {
   const log = deps.log ?? silentLog;
@@ -43,14 +52,23 @@ export async function runWorkerTick(deps: WorkerDeps): Promise<number> {
   const jobs = await deps.store.claimSubmitted(deps.batchSize ?? 1);
   for (const job of jobs) {
     try {
+      // Pass the job's attempt count from the record (tracked in jsonb by the store)
+      const retryAttempt = (job.record?.attempts ?? 1) - 1; // Convert attempt count to 0-based retry attempt
       const outcome = await runVerification(job, {
         executor: deps.executor,
         resolver: deps.resolver,
+        retryAttempt,
       });
       await deps.store.complete(job.recordId, outcome);
       const turnaround =
         job.submittedAtMs !== undefined ? (Date.now() - job.submittedAtMs) / 1000 : undefined;
       metrics.verificationResult(outcome.status, turnaround);
+
+      // Emit retry metric if this job was retried
+      if (outcome.retryAttempt && outcome.retryAttempt > 0 && metrics.verificationRetry) {
+        metrics.verificationRetry(outcome.retryAttempt, outcome.status);
+      }
+
       log.info(`verification ${job.recordId} → ${outcome.status} (${job.contractId})`);
       // Mirror the outcome on-chain (best-effort; never throws).
       if (deps.attestor) await deps.attestor.reportOutcome(job.contractId, outcome);

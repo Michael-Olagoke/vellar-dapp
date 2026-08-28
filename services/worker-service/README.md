@@ -159,3 +159,81 @@ implemented** — there is no untrusted queue between the service and the worker
 | `VERIFY_BUILD_MEMORY`     | container memory cap (docker `--memory`)                       | 2g      |
 | `VERIFY_BUILD_CPUS`       | container CPU cap (docker `--cpus`)                            | 2       |
 | `VERIFY_BUILD_PIDS_LIMIT` | max processes in the container                                 | 512     |
+
+## Automatic Retry with Backoff for Transient Failures (Issue #295)
+
+The worker automatically retries verification jobs that fail due to transient
+infrastructure issues (network timeouts, RPC rate limits, temporary server
+unavailability) while immediately marking genuinely permanent failures as failed
+to avoid wasting resources.
+
+### Transient vs Permanent Classification
+
+**Transient failures (automatically retried with exponential backoff)**:
+- **Network-level errors**: timeouts, connection resets, DNS failures
+- **RPC rate-limiting**: "too many requests", HTTP 429 responses
+- **RPC server unavailability**: temporary server errors (5xx), nodes syncing or not ready
+- **Build timeouts**: Docker build timeout or temporary resource constraint
+- **Git service issues**: clone/checkout failures (may recover if git service recovers)
+
+**Permanent failures (immediately marked failed, NOT retried)**:
+- **Contract not found on-chain**: contract address doesn't exist or wrong network
+- **Stellar Asset Contract (SAC)**: contract is a built-in token, no user source to verify
+- **Source/bytecode mismatch**: rebuilt wasm doesn't match deployed wasm (verification failure)
+- **Invalid input**: malformed contract address, unsupported source type
+- **Configuration errors**: build executor not set up, SSRF-rejected repository URL
+- **Build infrastructure errors**: missing expected artifact, build configuration broken
+
+### Retry Behavior
+
+Each transient failure outcome includes:
+- `isRetryable: true` — indicates the error is retryable
+- `retryDelayMs` — exponential backoff delay (with jitter) before the next attempt
+- `retryAttempt` — the 0-based attempt number for this job
+
+The backoff follows exponential growth with full jitter to prevent thundering herd:
+
+```
+Attempt 0: delay ∈ [0, 1000]ms         (first RPC call)
+Attempt 1: delay ∈ [0, 2000]ms         (after first backoff)
+Attempt 2: delay ∈ [0, 4000]ms         (after second backoff)
+Attempt N: delay ∈ [0, min(cap, base*2^N)]ms  (capped at 30s)
+```
+
+After exhausting all retry attempts (default 3 retries + 1 initial = 4 total
+attempts), the job is moved to `dead_letter` status and never retried again.
+
+### Idempotency
+
+Verification jobs are naturally idempotent — re-running verification against the
+same contract doesn't cause harmful side effects:
+- The rebuilt wasm hash is deterministic (same input → same output)
+- Multiple verification attempts produce the same comparison result
+- Each attempt is independent (no state accumulated across retries)
+
+This means a transient failure followed by a retry and success produces the
+correct final outcome with no conflicts or duplicates.
+
+### Metrics
+
+The worker emits a `verification_retry` metric tracking how many retry attempts
+were required:
+- `verificationRetry(retryCount, finalOutcome)` — emitted when a job completes
+  after transient retries
+- `retryCount` — number of retry attempts (0 = no retries, first-attempt success)
+- `finalOutcome` — "verified" or "failed"
+
+Use this metric to understand retry patterns and detect systemic RPC reliability
+issues (e.g. if retry counts spike, it may indicate an RPC outage or network
+congestion).
+
+### Implementation
+
+The classification is implemented in `error-classification.ts`:
+- `isTransientFailure(error): boolean` — determines if an error is retryable
+- `classifyError(error): ErrorClassificationResult` — detailed classification with reasoning
+
+Retry delays are calculated using the existing `calculateBackoffDelay()` utility
+from `backoff.ts`, reusing the same exponential backoff + jitter logic as the
+M7 reaper for consistency.
+
