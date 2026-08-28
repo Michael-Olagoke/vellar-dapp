@@ -64,6 +64,10 @@ function outcomeCounter(name: string, help: string) {
 export const domainMetrics = {
   walletCreated: outcomeCounter("vela_wallet_created_total", "Wallet creation attempts"),
   passkeyAuth: outcomeCounter("vela_passkey_auth_total", "Passkey auth (connect) attempts"),
+  passkeyAuthRateLimited: outcomeCounter(
+    "vela_passkey_auth_rate_limited_total",
+    "Rate-limited passkey auth (connect) attempts",
+  ),
   txSigned: outcomeCounter("vela_tx_signed_total", "Transaction submit/sign completions"),
   policyDeployed: outcomeCounter("vela_policy_deployed_total", "Policy instance deploys"),
   verification: outcomeCounter("vela_verification_total", "Verification outcomes"),

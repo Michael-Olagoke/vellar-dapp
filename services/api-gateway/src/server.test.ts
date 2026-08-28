@@ -104,7 +104,7 @@ describe("api-gateway", () => {
     expect(res.headers["access-control-allow-methods"]).toContain("DELETE");
   });
 
-  it("never echoes a foreign origin back as allowed", async () => {
+  it("never echoes a foreign origin back as allowed and rejects disallowed origins", async () => {
     const res = await app.inject({
       method: "OPTIONS",
       url: "/wallet/connect",
@@ -113,9 +113,7 @@ describe("api-gateway", () => {
         "access-control-request-method": "POST",
       },
     });
-    // With a static origin config the header is always the configured origin;
-    // browsers block the caller when it doesn't match their own.
-    expect(res.headers["access-control-allow-origin"]).not.toBe("https://evil.example");
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
   it("sets security headers (helmet) on responses", async () => {

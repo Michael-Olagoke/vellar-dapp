@@ -41,14 +41,16 @@ function numEnv(name: string, fallback: number): number {
 export function buildServer(options: GatewayOptions = {}): FastifyInstance {
   const walletServiceUrl =
     options.walletServiceUrl ?? process.env.WALLET_SERVICE_URL ?? "http://localhost:4001";
-  const corsOriginRaw = options.corsOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:3000";
-  // CORS_ORIGIN may list several allowed origins, comma-separated (e.g. the
-  // apex and www variants of a domain). A single value stays a string.
+  const DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://app.vellar.wallet",
+    "https://vellar.wallet",
+    "chrome-extension://vellar-wallet-extension",
+  ];
+  const corsOriginRaw = options.corsOrigin ?? process.env.CORS_ORIGIN;
   const corsOrigins = corsOriginRaw
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-  const corsOrigin = corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins;
+    ? corsOriginRaw.split(",").map((o) => o.trim()).filter(Boolean)
+    : DEFAULT_ALLOWED_ORIGINS;
 
   const maxBodyBytes = options.maxBodyBytes ?? numEnv("MAX_BODY_BYTES", 1024 * 1024);
   const requestTimeoutMs = options.requestTimeoutMs ?? numEnv("REQUEST_TIMEOUT_MS", 30_000);
@@ -78,10 +80,26 @@ export function buildServer(options: GatewayOptions = {}): FastifyInstance {
   });
 
   // Browser clients (web app on its own origin) call this gateway directly;
-  // only the configured origin(s) are allowed (technical-doc.md §8.3). DELETE
-  // must be listed explicitly — the plugin's default (GET,HEAD,POST) fails
-  // session revocation at preflight.
-  app.register(cors, { origin: corsOrigin, methods: ["GET", "POST", "DELETE"] });
+  // only explicitly configured web and extension origins are allowed.
+  app.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      const isAllowed = corsOrigins.some((allowed) => {
+        if (allowed === origin) return true;
+        if (allowed.includes("*")) {
+          const regex = new RegExp("^" + allowed.replace(/\*/g, ".*") + "$");
+          return regex.test(origin);
+        }
+        return false;
+      });
+      if (isAllowed) {
+        cb(null, true);
+      } else {
+        cb(null, false);
+      }
+    },
+    methods: ["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
+  });
 
   // Boundary checks that must run BEFORE proxying. @fastify/http-proxy streams
   // the body straight through, so Fastify's own `bodyLimit` (which only applies

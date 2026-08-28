@@ -102,6 +102,8 @@ export interface WalletServiceDeps {
    * meter (fails closed). Metering on the body would let a caller split spend
    * across the testnet/mainnet partitions and double the effective ceiling. */
   budgetNetwork?: BudgetNetwork;
+  passkeyRateLimitMax?: number;
+  passkeyRateLimitWindowMs?: number;
 }
 
 export function buildServer(deps: WalletServiceDeps): FastifyInstance {
@@ -110,6 +112,10 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
   const audit = deps.audit ?? createMemoryAuditLog();
   const now = deps.now ?? (() => new Date());
   const { submitter } = deps;
+
+  const connectRateLimits = new Map<string, { count: number; resetAt: number }>();
+  const passkeyRateLimitMax = deps.passkeyRateLimitMax ?? 5;
+  const passkeyRateLimitWindowMs = deps.passkeyRateLimitWindowMs ?? 60_000;
 
   const app = Fastify({ logger: true });
   registerHealth(app, "wallet-service", { isReady: deps.isReady });
@@ -239,6 +245,29 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
       return reply.code(400).send({ error: "invalid_body", details: parsed.error.issues });
     }
     const { keyId, network } = parsed.data;
+
+    const ip = request.ip || "127.0.0.1";
+    const rateKey = `${ip}:${keyId}`;
+    const currentTime = now().getTime();
+    let record = connectRateLimits.get(rateKey);
+    if (!record || currentTime > record.resetAt) {
+      record = { count: 1, resetAt: currentTime + passkeyRateLimitWindowMs };
+      connectRateLimits.set(rateKey, record);
+    } else {
+      record.count += 1;
+    }
+
+    if (record.count > passkeyRateLimitMax) {
+      recordOutcome(domainMetrics.passkeyAuth, "wallet-service", "failure", network);
+      recordOutcome(domainMetrics.passkeyAuthRateLimited, "wallet-service", "failure", network);
+      return reply
+        .code(429)
+        .header("retry-after", Math.ceil((record.resetAt - currentTime) / 1000))
+        .send({
+          error: "rate_limited",
+          message: "Too many authentication attempts for this account or IP. Please try again later.",
+        });
+    }
 
     const wallet = await wallets.findByKeyId(keyId, network);
     if (!wallet) {
