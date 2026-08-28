@@ -86,6 +86,24 @@ export const domainMetrics = {
     buckets: [1, 5, 15, 30, 60, 120, 300, 600, 1200],
     registers: [registry],
   }),
+  /** Verification job reclaim attempts (M7 reaper: stranded building → submitted).
+   * Incremented each time a stuck job is reclaimed for retry. Labels: service,
+   * attempt (zero-based reclaim number). High values indicate frequent crashes. */
+  verificationRetry: new Counter({
+    name: "vela_verification_retry_total",
+    help: "Verification job reclaim attempts by the reaper (M7)",
+    labelNames: ["service", "attempt"] as const,
+    registers: [registry],
+  }),
+  /** Verification jobs that exhausted all retries (M7 reaper: building → dead_letter).
+   * Indicates poisoned jobs or systemic build failures. Each represents a job
+   * that failed consistently across all max attempts. */
+  verificationDeadLetter: new Counter({
+    name: "vela_verification_dead_letter_total",
+    help: "Verification jobs moved to dead-letter queue after exhausting retries",
+    labelNames: ["service"] as const,
+    registers: [registry],
+  }),
 } as const;
 
 export type Outcome = "success" | "failure";

@@ -137,12 +137,27 @@ log.info(`build worker started (rpc=${config.rpcUrl}). Polling for submitted ver
 
 // Reaper (M7): periodically return crashed 'building' rows to the queue, or
 // park them in dead_letter after too many attempts, so a mid-build crash can't
-// strand a job forever.
+// strand a job forever. Uses exponential backoff with jitter on reclaim (idea.md §13).
 const runReaper = async () => {
   try {
     const res = await store.reapStranded({
       timeoutMs: config.reapTimeoutMs,
       maxAttempts: config.maxBuildAttempts,
+      baseBackoffDelayMs: config.backoffBaseDelayMs,
+      maxBackoffDelayMs: config.maxBackoffDelayMs,
+      // Track retry attempts for metrics
+      onReclaimed: (attempt: number) => {
+        domainMetrics.verificationRetry.inc({
+          service: "worker-service",
+          attempt: String(attempt),
+        });
+      },
+      // Track dead-lettered jobs
+      onDeadLettered: () => {
+        domainMetrics.verificationDeadLetter.inc({
+          service: "worker-service",
+        });
+      },
     });
     if (res.reclaimed || res.deadLettered) {
       log.info(`reaper: reclaimed ${res.reclaimed}, dead-lettered ${res.deadLettered}`);

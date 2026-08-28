@@ -38,6 +38,13 @@ export interface WorkerRuntimeConfig {
   /** Max claim attempts before a stranded job is parked in 'dead_letter'
    * (default 3: a transient crash gets 2 retries, a poisoned job parks). */
   maxBuildAttempts: number;
+  /** Base delay for exponential backoff on reclaim (ms). Default 1s.
+   * When a stranded job is reclaimed, the reaper waits base * 2^attempt
+   * before allowing another claim, up to maxBackoffDelayMs (full jitter). */
+  backoffBaseDelayMs: number;
+  /** Maximum delay cap per reclaim attempt (ms). Default 30s. Prevents
+   * unbounded exponential growth. Actual delay is random(0, min(cap, exponential)). */
+  maxBackoffDelayMs: number;
 }
 
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
@@ -79,6 +86,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerRunti
     reapTimeoutMs: env.VERIFY_REAP_TIMEOUT_MS ? Number(env.VERIFY_REAP_TIMEOUT_MS) : 900_000,
     reapIntervalMs: env.VERIFY_REAP_INTERVAL_MS ? Number(env.VERIFY_REAP_INTERVAL_MS) : 300_000,
     maxBuildAttempts: env.VERIFY_MAX_ATTEMPTS ? Number(env.VERIFY_MAX_ATTEMPTS) : 3,
+    backoffBaseDelayMs: env.VERIFY_BACKOFF_BASE_MS ? Number(env.VERIFY_BACKOFF_BASE_MS) : 1_000,
+    maxBackoffDelayMs: env.VERIFY_BACKOFF_MAX_MS ? Number(env.VERIFY_BACKOFF_MAX_MS) : 30_000,
   };
 }
 
