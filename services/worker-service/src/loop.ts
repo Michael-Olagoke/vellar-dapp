@@ -74,14 +74,16 @@ export async function runWorkerTick(deps: WorkerDeps): Promise<number> {
       const turnaround =
         job.submittedAtMs !== undefined ? (Date.now() - job.submittedAtMs) / 1000 : undefined;
       metrics.verificationResult(outcome.status, turnaround);
-      log.info(`verification ${job.recordId} → ${outcome.status} (${job.contractId})`);
+      const corrTag = job.correlationId ? ` [correlationId=${job.correlationId}]` : "";
+      log.info(`verification ${job.recordId} → ${outcome.status} (${job.contractId})${corrTag}`);
       // Mirror the outcome on-chain (best-effort; never throws).
       if (deps.attestor) await deps.attestor.reportOutcome(job.contractId, outcome);
     } catch (err) {
       // runVerification only throws on truly unexpected errors; leave the record
       // "building" so it can be retried, and keep processing the batch.
       metrics.workerFailure();
-      log.error(`verification ${job.recordId} errored unexpectedly`, err);
+      const corrTag = job.correlationId ? ` [correlationId=${job.correlationId}]` : "";
+      log.error(`verification ${job.recordId} errored unexpectedly${corrTag}`, err);
     }
   };
 

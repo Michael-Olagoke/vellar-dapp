@@ -199,17 +199,6 @@ export const templates: PolicyTemplate[] = [
     type: "spending_limit",
     title: "Spending limit",
     description: "Cap total XLM a signer can move per fixed period.",
-    schema: base.extend({
-      type: z.literal("spending_limit"),
-      spendingLimits: z
-        .object({
-          dailyXlm: positiveDecimal.optional(),
-          perTxXlm: positiveDecimal.optional(),
-        })
-        .refine((v) => v.dailyXlm !== undefined || v.perTxXlm !== undefined, {
-          message: "set dailyXlm and/or perTxXlm",
-        }),
-    }),
     schema: base
       .extend({
         type: z.literal("spending_limit"),
@@ -237,9 +226,6 @@ export const templates: PolicyTemplate[] = [
     type: "verified_only",
     title: "Verified contracts only",
     description: "Restrict a signer to contracts with verified source.",
-    schema: base.extend({
-      type: z.literal("verified_only"),
-    }),
     schema: base
       .extend({
         type: z.literal("verified_only"),

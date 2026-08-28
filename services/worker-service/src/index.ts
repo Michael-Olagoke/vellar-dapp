@@ -56,13 +56,13 @@ if (mode === "stub") {
 // Map loop outcomes onto the shared Prometheus metrics (idea.md §13).
 const metrics: WorkerMetrics = {
   verificationResult(outcome, turnaroundSeconds) {
-    domainMetrics.verification.inc({
+    domainMetrics.workerVerification.inc({
       service: "worker-service",
       outcome: outcome === "verified" ? "success" : "failure",
       network: "unknown",
     });
     if (turnaroundSeconds !== undefined) {
-      domainMetrics.verificationTurnaround.observe(
+      domainMetrics.workerVerificationTurnaround.observe(
         { service: "worker-service", outcome },
         turnaroundSeconds,
       );
