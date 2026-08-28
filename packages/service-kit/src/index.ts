@@ -12,6 +12,8 @@ export {
   type Outcome,
 } from "./metrics";
 
+export { Counter } from "prom-client";
+
 export {
   resolvePersistencePolicy,
   type PersistenceInputs,
