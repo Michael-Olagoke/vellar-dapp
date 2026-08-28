@@ -22,6 +22,8 @@ import {
 import { SubmissionError, type TransactionSubmitter } from "./relayer";
 import { assertScopedToKnownWallets, ScopeError } from "./scope";
 import { assertDerivedContractId, DerivationMismatchError } from "./derivation";
+import type { CacheOperation } from "./cache-metrics";
+import { NoOpCache } from "./cache";
 
 // Wallet API (idea.md §11). No POST /wallet/sign: signing is client-side via
 // passkeys by design (technical-doc.md §8 — no silent signing, no server key
@@ -83,6 +85,7 @@ export interface WalletServiceDeps {
   wallets?: WalletRepository;
   sessions?: SessionRepository;
   audit?: AuditLog;
+  cache?: CacheOperation;
   now?: () => Date;
   /** Passphrase used to parse submitted XDR for funding-path scoping. Keyed off
    * server config, NEVER the request body's network field (security-audit V5).
@@ -108,6 +111,7 @@ export function buildServer(deps: WalletServiceDeps): FastifyInstance {
   const wallets = deps.wallets ?? createMemoryWalletRepository();
   const sessions = deps.sessions ?? createMemorySessionRepository();
   const audit = deps.audit ?? createMemoryAuditLog();
+  const cache = deps.cache ?? new NoOpCache();
   const now = deps.now ?? (() => new Date());
   const { submitter } = deps;
 
