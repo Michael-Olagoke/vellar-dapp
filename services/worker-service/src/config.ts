@@ -50,6 +50,8 @@ export interface WorkerRuntimeConfig {
   /** Max claim attempts before a stranded job is parked in 'dead_letter'
    * (default 3: a transient crash gets 2 retries, a poisoned job parks). */
   maxBuildAttempts: number;
+  /** Backpressure concurrency limit for concurrent transaction processing (default 2). */
+  concurrencyLimit: number;
 }
 
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
@@ -93,6 +95,11 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerRunti
     reapIntervalMs: env.VERIFY_REAP_INTERVAL_MS ? Number(env.VERIFY_REAP_INTERVAL_MS) : 300_000,
     reapJitterMs: env.VERIFY_REAP_JITTER_MS ? Number(env.VERIFY_REAP_JITTER_MS) : 30_000,
     maxBuildAttempts: env.VERIFY_MAX_ATTEMPTS ? Number(env.VERIFY_MAX_ATTEMPTS) : 3,
+    concurrencyLimit: env.WORKER_CONCURRENCY
+      ? Number(env.WORKER_CONCURRENCY)
+      : env.VERIFY_CONCURRENCY_LIMIT
+      ? Number(env.VERIFY_CONCURRENCY_LIMIT)
+      : 2,
   };
 }
 

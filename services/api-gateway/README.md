@@ -1,3 +1,80 @@
 # @vellar/api-gateway
 
 Unified API entrypoint: auth/session middleware, rate limiting, request tracing, client routing
+
+## Canary deploy stage (#336)
+
+### What this covers, honestly
+
+The issue asks for a canary stage that routes a percentage of production
+traffic to a new version, gated by automated health checks. This project
+deploys as a **single combined process** to Railway/Render (`railway.json`,
+`render.yaml`) with no orchestrator and no traffic-splitting primitive on
+either platform's free tier — there is no way to route "10% of traffic" to
+one process and 90% to another without first standing up a router/mesh
+layer, which is out of scope for this issue (see `infra/README.md`'s `k8s/`
+note — aspirational, not yet built).
+
+What's real and shippable today: this service already emits genuine
+request-outcome metrics (`vela_http_requests_total`, labeled by status —
+see `@vellar/service-kit`'s `registerMetrics`), so a **canary deployed as a
+separate instance receiving its own (even if small/synthetic) traffic** can
+be judged on its real error rate before being promoted. That's the gate
+below — an automatable go/no-go check with a documented rollback trigger,
+using metrics the service already produces, not a fabricated traffic split.
+
+### Canary health + error-budget gates
+
+Two scripts, meant to run in sequence against a canary instance's URL
+before promoting it:
+
+1. **[`scripts/deploy-health-gate.ts`](../../scripts/deploy-health-gate.ts)**
+   — confirms the canary is even up and stable:
+   ```sh
+   tsx scripts/deploy-health-gate.ts --url https://<canary-url>/health --consecutive 5
+   ```
+2. **[`scripts/canary-error-budget-gate.ts`](../../scripts/canary-error-budget-gate.ts)**
+   — once traffic is flowing to the canary, scrapes its `/metrics` twice,
+   `--window-ms` apart, and computes the 5xx rate **within that window**
+   (a delta, so a stale error from before the canary went live doesn't count
+   against it forever):
+   ```sh
+   tsx scripts/canary-error-budget-gate.ts \
+     --url https://<canary-url> \
+     --window-ms 300000 \
+     --max-error-rate 0.02 \
+     --min-requests 20
+   ```
+   Exit `0` with a real (non-inconclusive) verdict means the canary's error
+   rate is within budget — safe to promote. Exit `1` means the budget was
+   exceeded. If it reports **inconclusive** (too few requests observed),
+   that's not a pass — it means there isn't enough signal yet; wait for more
+   traffic and re-run rather than promoting on a guess.
+
+### Automated promotion gate
+
+Both checks are meant to run as one CI step (or a manual pre-promotion
+command) that only proceeds to promote/merge when both exit 0:
+
+```sh
+tsx scripts/deploy-health-gate.ts --url "$CANARY_URL/health" --consecutive 5 \
+  && tsx scripts/canary-error-budget-gate.ts --url "$CANARY_URL" --window-ms 300000 --max-error-rate 0.02
+```
+
+### Rollback trigger
+
+If either gate fails (non-zero exit), the documented response is: **do not
+promote**, and roll the canary instance back to the last known-good build
+via the platform's native rollback (Render: Deploys tab → Rollback; Railway:
+Deployments tab → Redeploy a prior build — see the wallet-service README's
+[rollback runbook](../wallet-service/README.md#rollback-procedure) for the
+exact steps, which apply identically here). Re-run the health gate against
+the rolled-back instance before considering the incident resolved.
+
+### Staging rehearsal
+
+Rehearse the full flow on staging before relying on it for a real
+production canary: deploy a change to a staging instance, run both gates
+against it, then deliberately introduce a failure (e.g. point
+`--max-error-rate` at a threshold you know the current error rate exceeds)
+to confirm the gate actually fails closed, not just that it can pass.

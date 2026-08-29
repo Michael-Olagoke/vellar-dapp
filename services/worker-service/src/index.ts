@@ -10,6 +10,8 @@ import { createAttestor, type Attestor } from "./attestor";
 import { assertAttestorSafeForNetwork } from "./attestor-guard";
 import { createRegistrySubmitter } from "./registry-submitter";
 import { jitteredDelayMs } from "./jitter";
+import { safeLog, createSafeLogger } from "./config/secretsRedactor";
+import { validateSecrets } from "./config/validateSecrets";
 
 // @vellar/worker-service — the deterministic build worker (technical-doc.md §8.4).
 //
@@ -26,11 +28,20 @@ import { jitteredDelayMs } from "./jitter";
 
 const config = configFromEnv();
 
+// Validate secrets at startup (names only, never values)
+try {
+  validateSecrets();
+} catch (err) {
+  safeLog("error", "[worker-service] Secret validation failed", err);
+  process.exit(1);
+}
+
 if (!config.databaseUrl) {
   // The worker has nothing to do without the shared store. Fail loudly rather
   // than idle-poll forever against nothing.
-  console.error(
-    "[worker-service] DATABASE_URL is not set — the build worker needs the shared verification store. Exiting.",
+  safeLog(
+    "error",
+    "[worker-service] DATABASE_URL is not set — the build worker needs the shared verification store. Exiting."
   );
   process.exit(1);
 }
@@ -41,10 +52,7 @@ const store = createPgJobStore(db);
 const resolver = createRpcArtifactResolver({ rpcUrl: config.rpcUrl, timeoutMs: config.rpcTimeoutMs });
 const { executor, mode } = executorFromConfig(config);
 
-const log = {
-  info: (msg: string) => console.log(`[worker-service] ${msg}`),
-  error: (msg: string, err?: unknown) => console.error(`[worker-service] ${msg}`, err ?? ""),
-};
+const log = createSafeLogger();
 
 if (mode === "stub") {
   log.info(
@@ -57,13 +65,13 @@ if (mode === "stub") {
 // Map loop outcomes onto the shared Prometheus metrics (idea.md §13).
 const metrics: WorkerMetrics = {
   verificationResult(outcome, turnaroundSeconds) {
-    domainMetrics.verification.inc({
+    domainMetrics.workerVerification.inc({
       service: "worker-service",
       outcome: outcome === "verified" ? "success" : "failure",
       network: "unknown",
     });
     if (turnaroundSeconds !== undefined) {
-      domainMetrics.verificationTurnaround.observe(
+      domainMetrics.workerVerificationTurnaround.observe(
         { service: "worker-service", outcome },
         turnaroundSeconds,
       );
@@ -72,6 +80,12 @@ const metrics: WorkerMetrics = {
   workerFailure() {
     // §13 alerting: verification worker failures.
     domainMetrics.rpcErrors.inc({ service: "worker-service", upstream: "build" });
+  },
+  queueDepth(depth) {
+    domainMetrics.workerQueueDepth.set({ service: "worker-service" }, depth);
+  },
+  processingLag(lagSeconds) {
+    domainMetrics.workerProcessingLagSeconds.set({ service: "worker-service" }, lagSeconds);
   },
 };
 
@@ -101,7 +115,7 @@ if (config.attestorSecretKey && config.attestationRegistryId) {
       allowSingleKey: process.env.ALLOW_SINGLE_KEY_ATTESTOR === "1",
     });
   } catch (err) {
-    console.error(`[worker-service] ${err instanceof Error ? err.message : String(err)}`);
+    safeLog("error", `[worker-service] ${err instanceof Error ? err.message : String(err)}`, err);
     process.exit(1);
   }
   attestor = createAttestor({
@@ -129,6 +143,7 @@ const loop = startWorkerLoop({
   store,
   executor,
   resolver,
+  concurrencyLimit: config.concurrencyLimit,
   idleDelayMs: config.pollIdleMs,
   log,
   metrics,
