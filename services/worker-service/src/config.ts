@@ -38,6 +38,9 @@ export interface WorkerRuntimeConfig {
   /** Max claim attempts before a stranded job is parked in 'dead_letter'
    * (default 3: a transient crash gets 2 retries, a poisoned job parks). */
   maxBuildAttempts: number;
+  /** Consumer group concurrency (#354): how many parallel worker loops to run
+   * in the verification consumer group. Default 1. */
+  workerConcurrency: number;
 }
 
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
@@ -79,6 +82,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerRunti
     reapTimeoutMs: env.VERIFY_REAP_TIMEOUT_MS ? Number(env.VERIFY_REAP_TIMEOUT_MS) : 900_000,
     reapIntervalMs: env.VERIFY_REAP_INTERVAL_MS ? Number(env.VERIFY_REAP_INTERVAL_MS) : 300_000,
     maxBuildAttempts: env.VERIFY_MAX_ATTEMPTS ? Number(env.VERIFY_MAX_ATTEMPTS) : 3,
+    workerConcurrency: env.WORKER_CONCURRENCY ? Number(env.WORKER_CONCURRENCY) : 1,
   };
 }
 
