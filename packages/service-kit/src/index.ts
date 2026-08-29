@@ -39,6 +39,13 @@ export {
 
 export { createPgSpendBudget, type BudgetDb, type PgBudgetConfig } from "./pg-budget";
 
+export {
+  retryWithBackoff,
+  MaxRetriesExceededError,
+  RetryAbortedError,
+  type RetryOptions,
+} from "./retry";
+
 export interface HealthOptions {
   /** Optional readiness probe. When it returns false (or throws), /health
    * responds 503 so the orchestrator stops routing traffic — used to surface a
