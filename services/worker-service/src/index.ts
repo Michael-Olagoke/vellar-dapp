@@ -169,6 +169,21 @@ const runReaper = async () => {
     const res = await store.reapStranded({
       timeoutMs: config.reapTimeoutMs,
       maxAttempts: config.maxBuildAttempts,
+      baseBackoffDelayMs: config.backoffBaseDelayMs,
+      maxBackoffDelayMs: config.maxBackoffDelayMs,
+      // Track retry attempts for metrics
+      onReclaimed: (attempt: number) => {
+        domainMetrics.verificationRetry.inc({
+          service: "worker-service",
+          attempt: String(attempt),
+        });
+      },
+      // Track dead-lettered jobs
+      onDeadLettered: () => {
+        domainMetrics.verificationDeadLetter.inc({
+          service: "worker-service",
+        });
+      },
     });
     if (res.reclaimed || res.deadLettered) {
       log.info(`reaper: reclaimed ${res.reclaimed}, dead-lettered ${res.deadLettered}`);

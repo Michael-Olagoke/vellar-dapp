@@ -8,7 +8,10 @@ import { runVerification, type RunVerificationDeps } from "./verify";
 
 /** Observability hook (idea.md §13): the loop reports each verification outcome
  * + turnaround and any unexpected worker failure. Optional + defaulted so the
- * loop stays a pure, injectable unit in tests. */
+ * loop stays a pure, injectable unit in tests.
+ *
+ * ISSUE #295: Added verificationRetry metric to track retry attempts for jobs
+ * that succeeded or failed after transient errors. */
 export interface WorkerMetrics {
   verificationResult(outcome: "verified" | "failed", turnaroundSeconds?: number): void;
   workerFailure(): void;
@@ -69,6 +72,7 @@ export async function runWorkerTick(deps: WorkerDeps): Promise<number> {
       const outcome = await runVerification(job, {
         executor: deps.executor,
         resolver: deps.resolver,
+        retryAttempt,
       });
       await deps.store.complete(job.recordId, outcome);
       const turnaround =

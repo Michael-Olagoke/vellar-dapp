@@ -10,10 +10,11 @@ import {
 import { buildCleanupSteps, buildMergeStep } from "./builder";
 import type { AccountReader } from "./horizon";
 import { buildCleanupPlan, isClassicAccountId } from "./planner";
+import type { CleanupJobStore } from "./db/job-store";
 
-// Lifecycle API (idea.md §11): inspect + plan. Execute/merge land with the
-// signing-flow decision (see BUILD-PLAN — docs are ambiguous on who signs
-// classic-account cleanup transactions in a passkey wallet).
+// Lifecycle API (idea.md §11): inspect + plan + async execute/merge (Issue #293).
+// Execute/merge endpoints now enqueue jobs to a persistent queue, ensuring
+// per-account FIFO ordering and reliable processing across worker instances.
 
 const inspectBodySchema = z.object({
   accountId: z.string().min(1),
@@ -96,8 +97,9 @@ export function buildServer(deps: LifecycleServiceDeps): FastifyInstance {
 
   const passphrase = deps.networkPassphrase ?? TESTNET_PASSPHRASE;
 
-  // Builds UNSIGNED cleanup transactions (decisions.md option A): the user
-  // signs them in the wallet that holds the old account's key.
+  // POST /lifecycle/execute — Enqueue or build cleanup operations.
+  // If a job store is configured (Issue #293), enqueues the job for async processing
+  // and returns a job ID. Otherwise, builds and returns unsigned XDR immediately.
   app.post("/lifecycle/execute", async (request, reply) => {
     const parsed = planBodySchema.safeParse(request.body);
     if (!parsed.success) {
@@ -107,6 +109,25 @@ export function buildServer(deps: LifecycleServiceDeps): FastifyInstance {
     const invalid = validatePair(accountId, destination);
     if (invalid) return reply.code(400).send({ error: invalid });
 
+    // If job store is configured, enqueue the job for async processing
+    if (deps.store) {
+      try {
+        const { jobId, sequenceNumber } = await deps.store.enqueueJob(accountId, destination);
+        return reply.code(202).send({
+          jobId,
+          sequenceNumber,
+          status: "queued",
+          message: "Cleanup job queued for processing. Poll GET /lifecycle/jobs/:jobId for status.",
+        });
+      } catch (err) {
+        return reply.code(500).send({
+          error: "enqueue_failed",
+          message: err instanceof Error ? err.message : "Failed to enqueue job",
+        });
+      }
+    }
+
+    // Fallback: synchronous mode (no job store configured)
     const account = await deps.reader.getAccount(accountId);
     if (!account) return reply.code(404).send({ error: "account_not_found" });
 
