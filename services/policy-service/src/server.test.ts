@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import {
   Account,
@@ -597,5 +598,125 @@ describe("POST /policies/:id/simulate", () => {
       payload: { wallet: C1 },
     });
     expect(res.statusCode).toBe(422);
+  });
+});
+
+
+describe("Coordinator Integration: validation + deployment + persistence", () => {
+  it("end-to-end: generate → deploy-instance → deploy flow works correctly", async () => {
+    const { deployer, deployInstance } = stubDeployer();
+    const server = build(deployer);
+    const policies = createMemoryPolicyRepository();
+    const serverWithPersistence = buildServer({ deployer, policies });
+
+    // Step 1: Generate a policy
+    const genRes = await serverWithPersistence.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    expect(genRes.statusCode).toBe(201);
+    const policy = genRes.json().policy as { id: string };
+    expect(policy.status).toBe("generated");
+
+    // Step 2: Deploy instance
+    const deployRes = await serverWithPersistence.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(deployRes.statusCode).toBe(200);
+    const deployed = deployRes.json().policy as {
+      id: string;
+      status: string;
+      instance: { contractId: string; wallet: string };
+    };
+    expect(deployed.status).toBe("instance_deployed");
+    expect(deployed.instance.wallet).toBe(C1);
+
+    // Step 3: Record attach (without verification in this test)
+    const attachRes = await serverWithPersistence.inject({
+      method: "POST",
+      url: "/policies/deploy",
+      payload: {
+        policyId: policy.id,
+        txHash: "attachtx",
+        contractId: C1,
+      },
+    });
+    expect(attachRes.statusCode).toBe(200);
+    const final = attachRes.json().policy as {
+      id: string;
+      status: string;
+      deployment: { txHash: string };
+    };
+    expect(final.status).toBe("deployed");
+    expect(final.deployment.txHash).toBe("attachtx");
+
+    // Verify data persisted through all steps
+    const fetched = await serverWithPersistence.inject({ url: `/policies/${policy.id}` });
+    const persisted = fetched.json().policy as {
+      status: string;
+      instance: { contractId: string };
+      deployment: { txHash: string };
+    };
+    expect(persisted.status).toBe("deployed");
+    expect(persisted.instance.contractId).toBe(C1);
+    expect(persisted.deployment.txHash).toBe("attachtx");
+
+    await serverWithPersistence.close();
+  });
+
+  it("coordinator correctly handles validation failure and skips deployment", async () => {
+    const { deployer, deployInstance } = stubDeployer();
+    const server = build(deployer);
+
+    // Try to deploy a non-contract-enforced policy
+    const genRes = await server.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: {
+        definition: { version: "1", type: "single_owner", owners: [C1] },
+        network: "testnet",
+      },
+    });
+    const policy = genRes.json().policy as { id: string };
+
+    // Deploy-instance should reject it (not deployable)
+    const deployRes = await server.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(deployRes.statusCode).toBe(422);
+    expect(deployRes.json().error).toBe("not_deployable");
+
+    // Deployer should never have been called
+    expect(deployInstance).not.toHaveBeenCalled();
+  });
+
+  it("coordinator handles deployer errors correctly", async () => {
+    const deployInstance = vi.fn().mockRejectedValue(
+      new PolicyDeployError("simulate failed", "deploy_simulation_failed"),
+    );
+    const simulateInstance = vi.fn(async () => ({ ok: true }));
+    const server = build({ deployInstance, simulateInstance } as PolicyDeployer);
+
+    // Generate and try to deploy
+    const genRes = await server.inject({
+      method: "POST",
+      url: "/policies/generate",
+      payload: { definition: spendingPolicy, network: "testnet" },
+    });
+    const policy = genRes.json().policy as { id: string };
+
+    const deployRes = await server.inject({
+      method: "POST",
+      url: `/policies/${policy.id}/deploy-instance`,
+      payload: { wallet: C1 },
+    });
+    expect(deployRes.statusCode).toBe(502);
+    expect(deployRes.json().error).toBe("deploy_failed");
+    expect(deployRes.json().code).toBe("deploy_simulation_failed");
   });
 });
