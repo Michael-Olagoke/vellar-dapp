@@ -1,9 +1,9 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
-import proxy from "@fastify/http-proxy";
 import rateLimit from "@fastify/rate-limit";
 import { registerHealth, registerMetrics } from "@vellar/service-kit";
+import { registerProxyRoute } from "./register-proxy-route";
 
 // Gateway (technical-doc.md §6.3, §8; idea.md §12): the single public entry
 // point, so the cross-cutting security controls live HERE (defense at the
@@ -30,6 +30,8 @@ export interface GatewayOptions {
   maxBodyBytes?: number;
   /** Per-request timeout in ms (connection-level). Default 30_000. */
   requestTimeoutMs?: number;
+  /** Custom logger instance or options (e.g. stream for capturing logs in tests). */
+  logger?: unknown;
 }
 
 function numEnv(name: string, fallback: number): number {
@@ -41,14 +43,16 @@ function numEnv(name: string, fallback: number): number {
 export function buildServer(options: GatewayOptions = {}): FastifyInstance {
   const walletServiceUrl =
     options.walletServiceUrl ?? process.env.WALLET_SERVICE_URL ?? "http://localhost:4001";
-  const corsOriginRaw = options.corsOrigin ?? process.env.CORS_ORIGIN ?? "http://localhost:3000";
-  // CORS_ORIGIN may list several allowed origins, comma-separated (e.g. the
-  // apex and www variants of a domain). A single value stays a string.
+  const DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://app.vellar.wallet",
+    "https://vellar.wallet",
+    "chrome-extension://vellar-wallet-extension",
+  ];
+  const corsOriginRaw = options.corsOrigin ?? process.env.CORS_ORIGIN;
   const corsOrigins = corsOriginRaw
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-  const corsOrigin = corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins;
+    ? corsOriginRaw.split(",").map((o) => o.trim()).filter(Boolean)
+    : DEFAULT_ALLOWED_ORIGINS;
 
   const maxBodyBytes = options.maxBodyBytes ?? numEnv("MAX_BODY_BYTES", 1024 * 1024);
   const requestTimeoutMs = options.requestTimeoutMs ?? numEnv("REQUEST_TIMEOUT_MS", 30_000);
@@ -56,11 +60,26 @@ export function buildServer(options: GatewayOptions = {}): FastifyInstance {
   const rateLimitWindowMs = options.rateLimitWindowMs ?? numEnv("RATE_LIMIT_WINDOW_MS", 60_000);
 
   const app = Fastify({
-    logger: true,
+    logger: options.logger !== undefined ? (options.logger as never) : true,
+    disableRequestLogging: true,
     // Cap the request body so a giant payload can't tie up a downstream service.
     bodyLimit: maxBodyBytes,
     // Drop slow/stalled connections rather than letting them hold resources.
     connectionTimeout: requestTimeoutMs,
+  });
+
+  // Structured request logging middleware (idea.md §13, docs/observability.md):
+  // Emits structured JSON containing method, path, status, and duration for every request.
+  app.addHook("onResponse", async (request, reply) => {
+    request.log.info(
+      {
+        method: request.method,
+        path: request.url,
+        status: reply.statusCode,
+        duration: reply.elapsedTime,
+      },
+      "request completed",
+    );
   });
 
   // Security headers. CSP is disabled: this is a JSON API, not an HTML origin,
@@ -78,10 +97,26 @@ export function buildServer(options: GatewayOptions = {}): FastifyInstance {
   });
 
   // Browser clients (web app on its own origin) call this gateway directly;
-  // only the configured origin(s) are allowed (technical-doc.md §8.3). DELETE
-  // must be listed explicitly — the plugin's default (GET,HEAD,POST) fails
-  // session revocation at preflight.
-  app.register(cors, { origin: corsOrigin, methods: ["GET", "POST", "DELETE"] });
+  // only explicitly configured web and extension origins are allowed.
+  app.register(cors, {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      const isAllowed = corsOrigins.some((allowed) => {
+        if (allowed === origin) return true;
+        if (allowed.includes("*")) {
+          const regex = new RegExp("^" + allowed.replace(/\*/g, ".*") + "$");
+          return regex.test(origin);
+        }
+        return false;
+      });
+      if (isAllowed) {
+        cb(null, true);
+      } else {
+        cb(null, false);
+      }
+    },
+    methods: ["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
+  });
 
   // Boundary checks that must run BEFORE proxying. @fastify/http-proxy streams
   // the body straight through, so Fastify's own `bodyLimit` (which only applies
@@ -119,37 +154,21 @@ export function buildServer(options: GatewayOptions = {}): FastifyInstance {
   registerHealth(app, "api-gateway");
   registerMetrics(app, "api-gateway");
 
-  app.register(proxy, {
-    upstream: walletServiceUrl,
-    prefix: "/wallet",
-    rewritePrefix: "/wallet",
-  });
+  registerProxyRoute(app, { upstream: walletServiceUrl, prefix: "/wallet" });
 
   const lifecycleServiceUrl =
     options.lifecycleServiceUrl ?? process.env.LIFECYCLE_SERVICE_URL ?? "http://localhost:4002";
-  app.register(proxy, {
-    upstream: lifecycleServiceUrl,
-    prefix: "/lifecycle",
-    rewritePrefix: "/lifecycle",
-  });
+  registerProxyRoute(app, { upstream: lifecycleServiceUrl, prefix: "/lifecycle" });
 
   const policyServiceUrl =
     options.policyServiceUrl ?? process.env.POLICY_SERVICE_URL ?? "http://localhost:4003";
-  app.register(proxy, {
-    upstream: policyServiceUrl,
-    prefix: "/policies",
-    rewritePrefix: "/policies",
-  });
+  registerProxyRoute(app, { upstream: policyServiceUrl, prefix: "/policies" });
 
   const verificationServiceUrl =
     options.verificationServiceUrl ??
     process.env.VERIFICATION_SERVICE_URL ??
     "http://localhost:4004";
-  app.register(proxy, {
-    upstream: verificationServiceUrl,
-    prefix: "/verification",
-    rewritePrefix: "/verification",
-  });
+  registerProxyRoute(app, { upstream: verificationServiceUrl, prefix: "/verification" });
 
   return app;
 }

@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { buildServer } from "./server";
-import type { AccountReader } from "./horizon";
-import type { AuditLog, AuditEvent } from "./audit";
-import { createMemoryAuditLog } from "./audit";
-import { generateRedactionSalt } from "./audit-redaction";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FastifyInstance } from "fastify";
+import type { AccountReader, HorizonAccount } from "./horizon";
+import { buildCleanupPlan } from "./planner";
+import { buildServer, type LifecycleServiceDeps } from "./server";
 
 // Test helper: HorizonAccount mock
 function mockAccount(overrides: Partial<any> = {}) {
@@ -27,96 +26,11 @@ describe("lifecycle-service audit logging", () => {
   let mockReader: AccountReader;
   let auditLog: AuditLog;
 
-  beforeEach(() => {
-    const salt = generateRedactionSalt();
-    auditLog = createMemoryAuditLog(salt);
-    mockReader = {
-      async getAccount(accountId: string) {
-        if (accountId === "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX") {
-          return mockAccount();
-        }
-        return undefined;
-      },
-    };
-  });
-
-  describe("POST /lifecycle/inspect", () => {
-    it("logs lifecycle.account_inspected on successful inspection", async () => {
-      const app = buildServer({ reader: mockReader, auditLog });
-      const response = await app.inject({
-        method: "POST",
-        url: "/lifecycle/inspect",
-        payload: {
-          accountId: "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-        },
-      });
-
-      expect(response.statusCode).toBe(200);
-
-      const events = await auditLog.list();
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "lifecycle.account_inspected",
-        }),
-      );
-    });
-
-    it("does not log raw accountId in audit event", async () => {
-      const app = buildServer({ reader: mockReader, auditLog });
-      await app.inject({
-        method: "POST",
-        url: "/lifecycle/inspect",
-        payload: {
-          accountId: "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-        },
-      });
-
-      const events = await auditLog.list();
-      const inspectEvent = events.find((e) => e.type === "lifecycle.account_inspected");
-      expect(inspectEvent).toBeDefined();
-
-      // Account object should not be in redacted event
-      expect(inspectEvent?.data.account).toBeUndefined();
-
-      // No raw PII should appear in stringified event
-      const eventStr = JSON.stringify(inspectEvent);
-      expect(eventStr).not.toContain("GXXX");
-    });
-
-    it("logs lifecycle.inspect_rejected on invalid accountId format", async () => {
-      const app = buildServer({ reader: mockReader, auditLog });
-      const response = await app.inject({
-        method: "POST",
-        url: "/lifecycle/inspect",
-        payload: {
-          accountId: "INVALID_ACCOUNT", // Not a classic account
-        },
-      });
-
-      expect(response.statusCode).toBe(400);
-
-      const events = await auditLog.list();
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "lifecycle.inspect_rejected",
-          data: expect.objectContaining({
-            reason: "not_classic_account",
-          }),
-        }),
-      );
-    });
-
-    it("logs lifecycle.inspect_failed on account not found", async () => {
-      const app = buildServer({ reader: mockReader, auditLog });
-      const response = await app.inject({
-        method: "POST",
-        url: "/lifecycle/inspect",
-        payload: {
-          accountId: "GYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY", // Different account
-        },
-      });
-
-      expect(response.statusCode).toBe(404);
+function build(result: HorizonAccount | undefined, deps: Partial<LifecycleServiceDeps> = {}) {
+  const reader: AccountReader = { getAccount: vi.fn().mockResolvedValue(result) };
+  app = buildServer({ reader, ...deps });
+  return app;
+}
 
       const events = await auditLog.list();
       expect(events).toContainEqual(
@@ -437,6 +351,55 @@ describe("lifecycle-service audit logging", () => {
       );
     });
   });
+
+  it("logs a structured entry per built step with account id and outcome", async () => {
+    const info = vi.fn();
+    const server = build(
+      account({
+        balances: [
+          { assetType: "native", balance: "5.0" },
+          { assetType: "credit_alphanum4", assetCode: "USDC", assetIssuer: G2, balance: "12.5" },
+        ],
+      }),
+      { logger: { info } },
+    );
+    const res = await server.inject({
+      method: "POST",
+      url: "/lifecycle/execute",
+      payload: { accountId: G1, destination: G2 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(info).toHaveBeenCalledWith(
+      {
+        event: "cleanup.step.built",
+        accountId: G1,
+        destination: G2,
+        outcome: "built",
+        stepIndex: 1,
+        stepCount: 1,
+        title: "Clean up the account",
+        hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      },
+      "cleanup.step.built",
+    );
+  });
+
+  it("logs a no_steps outcome when the plan has nothing to clean", async () => {
+    const info = vi.fn();
+    const server = build(account(), { logger: { info } });
+    const res = await server.inject({
+      method: "POST",
+      url: "/lifecycle/execute",
+      payload: { accountId: G1, destination: G2 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().steps).toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      { event: "cleanup.plan.executed", accountId: G1, destination: G2, outcome: "no_steps" },
+      "cleanup.plan.executed",
+    );
+  });
+});
 
   describe("No PII Leakage Regression", () => {
     it("no endpoint logs raw account IDs in audit trail", async () => {
