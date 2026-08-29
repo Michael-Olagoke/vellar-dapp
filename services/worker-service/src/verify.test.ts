@@ -547,4 +547,41 @@ describe("Verification with Retry Backoff (Issue #295)", () => {
       expect(firstAttempt.outputHash).toBe(secondAttempt.outputHash);
     });
   });
+
+  // Issue #330 — a resolver timeout must NOT produce a terminal "failed"
+  // verdict for a contract that may well be perfectly valid; it should be
+  // retried, the same fallback path an unexpected error already gets.
+  it("rethrows (rather than returning failed) when the resolver times out", async () => {
+    let buildCalled = false;
+    const executor: BuildExecutor = {
+      async build(input) {
+        buildCalled = true;
+        return stubBuildExecutor().build(input);
+      },
+    };
+    const resolver = {
+      async resolveDeployedHash(): Promise<string> {
+        throw new ArtifactResolveError("contract metadata lookup timed out after 10000ms", "timeout");
+      },
+    };
+
+    await expect(runVerification(repoJob, { executor, resolver })).rejects.toBeInstanceOf(
+      ArtifactResolveError,
+    );
+    expect(buildCalled).toBe(false); // resolve happens first; no wasted build
+  });
+
+  it("still returns a terminal failed outcome for non-timeout resolve errors (not_found, rpc_error)", async () => {
+    for (const code of ["not_found", "rpc_error"] as const) {
+      const executor = stubBuildExecutor();
+      const resolver = {
+        async resolveDeployedHash(): Promise<string> {
+          throw new ArtifactResolveError(`boom (${code})`, code);
+        },
+      };
+      const outcome = await runVerification(repoJob, { executor, resolver });
+      expect(outcome.status).toBe("failed");
+      expect(outcome.statusDetail).toContain(code);
+    }
+  });
 });

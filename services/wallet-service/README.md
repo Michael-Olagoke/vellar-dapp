@@ -2,143 +2,78 @@
 
 Wallet metadata, account preferences, session/device records, audit logs
 
+## Deploy rollback runbook (#334)
 
-## Exactly-Once Transaction Submission Worker (Issue #291)
+### What this covers, honestly
 
-The wallet-service includes an optional transaction submission worker that implements **exactly-once processing** for transaction submissions to the blockchain. This prevents duplicate transaction submissions when the queue redelivers messages due to network retries, worker crashes, or visibility timeouts.
+The issue asks for blue/green environment support with a traffic cutover
+step and automated rollback. This project deploys as a **single combined
+process** (`@vellar/all-in-one`, which bundles this service) to Railway or
+Render — see `railway.json` / `render.yaml` at the repo root — with no
+orchestrator (no k8s/ECS; `infra/README.md`'s `k8s/` reference is aspirational,
+not yet built) and no built-in traffic-splitting or dual-environment
+primitive on either platform's free tier. A real blue/green cutover — two
+live environments, a router that shifts traffic between them, automatic
+rollback on a failed health check — isn't buildable against this infra today
+without first standing up that orchestration layer, which is out of scope
+for this issue.
 
-### Architecture
+What **is** real and shippable today: a documented, testable procedure for
+verifying a new deploy before it's trusted, and a fast, deliberate rollback
+path using the platform's native mechanisms. That's what's below.
 
-The worker uses a PostgreSQL-based processed-message store to track submission state with the following sequence:
+### Pre-cutover health verification
 
-1. **Receive** message from queue (do NOT ack yet)
-2. **Check** processed-message store:
-   - If already PROCESSED → skip (duplicate) → ack
-   - If IN_FLIGHT → skip (another worker handling) → ack
-   - If not present → continue
-3. **Mark IN_FLIGHT** (atomic SET NX using INSERT ON CONFLICT DO NOTHING)
-   - If conflict → another worker claimed it → ack and skip
-4. **Submit** transaction to blockchain
-5. On success:
-   - Mark PROCESSED (48-hour TTL)
-   - Ack message
-6. On transient failure:
-   - Clear IN_FLIGHT lock
-   - Do NOT ack → queue redelivers
-7. On permanent failure:
-   - Mark FAILED
-   - Ack message (do not retry)
+Before treating a fresh deploy as live, gate it on
+[`scripts/deploy-health-gate.ts`](../../scripts/deploy-health-gate.ts) —
+it polls `/health` until it reports healthy for several checks in a row
+(not just once, to rule out a service that's still flapping right after
+startup):
 
-### Error Classification
-
-Errors are classified as **transient** (retryable) or **permanent** (terminal):
-
-**Transient** (retry with backoff):
-- Network timeouts, connection errors, DNS failures
-- RPC rate limits (HTTP 429, 5xx), temporary unavailability
-- Sponsor submission transient failures
-
-**Permanent** (no retry):
-- Invalid transaction (sponsor_bad_tx, sponsor_simulation_failed)
-- Budget exceeded (sponsor_fee_too_high, sponsor_budget_exceeded)
-- On-chain failure (tx_failed)
-- Configuration errors (relayer_not_configured)
-
-### TTL Configuration
-
-**IN_FLIGHT TTL: 5 minutes**
-- Covers max submission latency + redelivery delay
-- [VERIFY] before deployment: ensure 5 minutes > p99 submission latency + queue visibility timeout
-
-**PROCESSED TTL: 48 hours**
-- Deduplicates redelivered messages within this window
-- [VERIFY] before deployment: ensure 48 hours ≥ 2 × queue message retention period
-
-### Residual Risk
-
-If a worker crashes AFTER submission but BEFORE writing PROCESSED:
-1. Message redelivered by queue
-2. IN_FLIGHT record detected if TTL not expired (safe dedup)
-3. If IN_FLIGHT TTL expired AND message redelivered → potential duplicate submission
-
-**Probability is low** because IN_FLIGHT TTL (5 min) > typical queue visibility timeout (~30 sec). Duplicate submission requires:
-- Worker crash after submission
-- IN_FLIGHT TTL to expire (5 min)
-- Message to be redelivered before TTL expires
-- All three conditions to coincide
-
-**Mitigation**: Set TTL conservatively, monitor submission latency, alert on unexpectedly long submissions.
-
-### Fail-Closed Policy
-
-**If the store (database) is unavailable:**
-- Do NOT submit transaction
-- Do NOT ack message
-- Let queue redeliver after visibility timeout
-
-**Reasoning**: For financial transactions, delayed submission is safer than duplicate submission. Better to wait for store recovery than risk losing the idempotency guarantee.
-
-### Polling Configuration
-
-- **POLL_IDLE_MS**: 5000ms (delay when queue empty)
-- **POLL_BUSY_MS**: 250ms (fast re-poll when work found)
-- **REAP_INTERVAL_MS**: 5 minutes (periodic cleanup of expired records)
-
-### Metrics
-
-The worker emits:
-- `submissionResult(outcome, durationMs)`: every attempt outcome (success or permanent failure)
-- `submissionRetry(transactionId, retryCount, finalOutcome)`: outcomes after transient retries
-- `workerFailure(error)`: unexpected errors (DB down, etc.)
-
-### Integration
-
-The worker complements the current synchronous submission flow:
-
-**Current (Synchronous):**
-```
-POST /wallet/submit → Immediate response (hash or error)
+```sh
+tsx scripts/deploy-health-gate.ts \
+  --url https://<your-deploy>.onrender.com/health \
+  --consecutive 5 \
+  --timeout-ms 120000
 ```
 
-**With Worker (Optional, Asynchronous):**
+Exit code `0` means the deploy answered healthy 5 times in a row within two
+minutes — safe to consider it the new "standby-verified" environment. Exit
+code `1` means it never stabilized; do not point users at it, and go
+straight to the rollback steps below.
+
+`/health` here already reflects DB readiness, not just process liveness —
+`registerHealth`'s `isReady` probe (`@vellar/service-kit`) returns 503 when
+the persistence layer is degraded (FIX 7), so this gate genuinely verifies
+the new deploy can serve real requests, not just that the process started.
+
+### Rollback procedure
+
+Both Railway and Render keep prior deploys and support rolling back to one
+without a rebuild:
+
+- **Render**: Dashboard → the service → **Deploys** tab → find the last
+  known-good deploy → **Rollback to this deploy**. Render redeploys that
+  exact build; no code change or push needed.
+- **Railway**: Dashboard → the service → **Deployments** tab → find the last
+  known-good deployment → the `⋮` menu → **Redeploy**. Same effect: the
+  prior build goes live without a rebuild.
+
+After rolling back, re-run the health gate against the now-live (rolled
+back) URL to confirm the rollback itself is healthy before considering the
+incident resolved:
+
+```sh
+tsx scripts/deploy-health-gate.ts --url https://<your-deploy>.onrender.com/health --consecutive 5
 ```
-POST /wallet/submit-queued → 202 Accepted
-Worker Poll → Claim → Submit → Update status
-GET /wallet/submission/:transactionId → Check status
-```
 
-The synchronous path remains unchanged; the worker provides an alternative for scenarios requiring guaranteed retry semantics.
+### Staging rehearsal
 
-### Testing
-
-Comprehensive test suite in `src/worker/submission-worker.test.ts` covers:
-- Error classification (transient vs permanent)
-- Duplicate detection and in-flight handling
-- Transient/permanent error behavior
-- Idempotency guarantees
-- Exactly-once processing
-- Error handling and metrics
-- TTL configuration
-
-All tests use mocked store and submitter for isolation.
-
-### Files
-
-- `src/db/schema.ts` — `transactionSubmissions` table schema
-- `src/db/pg-tx-store.ts` — Store operations (check, mark, cleanup)
-- `src/submission-error-classifier.ts` — Error classification logic
-- `src/worker/submission-worker.ts` — Worker polling loop
-- `src/worker/submission-worker.test.ts` — Comprehensive test suite
-- `../../docs/exactly-once-worker.md` — Full documentation
-
-### Configuration
-
-All constants are configurable via environment variables or function parameters:
-- `IN_FLIGHT_TTL_MS`: 5 minutes
-- `PROCESSED_TTL_MS`: 48 hours
-- `MAX_SUBMISSION_ATTEMPTS`: 3
-- `POLL_IDLE_MS`: 5000ms
-- `POLL_BUSY_MS`: 250ms
-- `REAP_INTERVAL_MS`: 5 minutes
-
-See `docs/exactly-once-worker.md` for [VERIFY] checklist before deployment.
+Because there's no separate blue/green environment to test cutover against,
+rehearse the procedure end-to-end on a staging deploy before you need it for
+real: deploy a change to staging, run the health gate against it, then
+deliberately roll it back one step and re-run the gate against the rolled
+-back build. If both gate runs pass, the rollback mechanism itself is
+confirmed working — the actual "test the full cutover and rollback in a
+staging environment" the issue asks for, scoped to what a single-environment
+deploy target can rehearse.

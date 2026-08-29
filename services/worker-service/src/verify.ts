@@ -79,8 +79,17 @@ export async function runVerification(
     deployedHash = await deps.resolver.resolveDeployedHash(job.contractId);
   } catch (err) {
     if (err instanceof ArtifactResolveError) {
-      const isTransient = isTransientFailure(err);
-      const outcome: VerificationOutcome = {
+      // A timeout is a transient upstream condition, not evidence the
+      // contract is missing or genuinely unverifiable (issue #330) — treating
+      // it as a terminal "failed" would be a false negative that a submitter
+      // can never fix by resubmitting the same, perfectly valid contract.
+      // Rethrow so the caller (runWorkerTick) leaves the record "building"
+      // and retries it, the same fallback path an unexpected error already
+      // gets.
+      if (err.code === "timeout") {
+        throw err;
+      }
+      return {
         status: "failed",
         statusDetail: `Could not resolve the deployed contract (${err.code}).`,
         log: `Could not resolve the deployed contract: ${err.message} (${err.code}).`,
