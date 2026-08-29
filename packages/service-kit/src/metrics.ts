@@ -189,18 +189,17 @@ const workerQueueDepth = new Gauge({
 });
 assertMetricName("vela_worker_queue_depth");
 
-const workerProcessingLagSeconds = new Gauge({
-  name: "vela_worker_processing_lag_seconds",
-  help: "Lag in seconds between job submission and processing pickup",
-  labelNames: ["service"] as const,
-  registers: [registry],
-});
-assertMetricName("vela_worker_processing_lag_seconds");
+const walletPasskeyAuthRateLimited = outcomeCounter(
+  "vela_wallet_passkey_auth_rate_limited_total",
+  "Rate-limited passkey auth (connect) attempts",
+);
 
 export const domainMetrics = {
   walletCreated,
   walletPasskeyAuth,
   passkeyAuth: walletPasskeyAuth,
+  walletPasskeyAuthRateLimited,
+  passkeyAuthRateLimited: walletPasskeyAuthRateLimited,
   walletTxSigned,
   txSigned: walletTxSigned,
   policyDeployed,

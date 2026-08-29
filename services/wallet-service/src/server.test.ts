@@ -134,6 +134,21 @@ describe("POST /wallet/connect", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("rate-limits passkey auth connect requests when max attempts exceeded (429)", async () => {
+    const server = buildServer({
+      submitter: workingSubmitter(),
+      passkeyRateLimitMax: 2,
+    });
+    const payload = { keyId: "test-key-limit", network: "testnet" as const };
+    const hit1 = await server.inject({ method: "POST", url: "/wallet/connect", payload });
+    expect(hit1.statusCode).toBe(404);
+    const hit2 = await server.inject({ method: "POST", url: "/wallet/connect", payload });
+    expect(hit2.statusCode).toBe(404);
+    const hit3 = await server.inject({ method: "POST", url: "/wallet/connect", payload });
+    expect(hit3.statusCode).toBe(429);
+    expect(hit3.json().error).toBe("rate_limited");
+  });
+
   it("scopes the mapping by network", async () => {
     const server = build(workingSubmitter());
     await server.inject({ method: "POST", url: "/wallet/create", payload: createBody });
