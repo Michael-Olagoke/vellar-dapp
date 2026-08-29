@@ -6,6 +6,7 @@ import { configFromEnv, executorFromConfig } from "./config";
 import { createRpcArtifactResolver } from "./resolver";
 import { createPgJobStore } from "./pg-job-store";
 import { startWorkerLoop, type WorkerMetrics } from "./loop";
+import { createVerificationGroup } from "./consumer-groups";
 import { createAttestor, type Attestor } from "./attestor";
 import { assertAttestorSafeForNetwork } from "./attestor-guard";
 import { createRegistrySubmitter } from "./registry-submitter";
@@ -151,6 +152,22 @@ const loop = startWorkerLoop({
 });
 log.info(`build worker started (rpc=${config.rpcUrl}). Polling for submitted verifications.`);
 
+// Consumer groups (issue #354): domain-specific consumer groups allow
+// independent scaling and monitoring. Currently we run a single verification
+// group, but this architecture enables future transaction processing groups
+// or other domains to be added with their own stores and concurrency settings.
+const verificationGroup = createVerificationGroup({
+  store,
+  executor,
+  resolver,
+  concurrency: config.workerConcurrency ?? 1,
+  idleDelayMs: config.pollIdleMs,
+  log,
+});
+log.info(
+  `verification consumer group started (concurrency=${config.workerConcurrency ?? 1}, rpc=${config.rpcUrl}).`,
+);
+
 // Reaper (M7): periodically return crashed 'building' rows to the queue, or
 // park them in dead_letter after too many attempts, so a mid-build crash can't
 // strand a job forever.
@@ -201,6 +218,7 @@ void runReaper();
 const shutdown = async () => {
   log.info("shutting down…");
   loop.stop();
+  verificationGroup.stop();
   if (sweepTimer) clearInterval(sweepTimer);
   reaperStopped = true;
   clearTimeout(reapTimer);
