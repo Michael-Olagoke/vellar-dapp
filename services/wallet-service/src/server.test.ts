@@ -217,6 +217,37 @@ describe("GET /health readiness (FIX 7)", () => {
   });
 });
 
+// Issue #329 — GET /ready: distinct from /health, so an orchestrator can gate
+// traffic on readiness specifically without depending on /health's dual
+// liveness+readiness shape. Backed by the same isReady probe (deps.isReady,
+// wired to the DB ping in index.ts) as /health's existing FIX 7 behavior.
+describe("GET /ready", () => {
+  it("200 when no probe is wired (dev default)", async () => {
+    const server = build(workingSubmitter());
+    const res = await server.inject({ url: "/ready" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "ready", service: "wallet-service" });
+  });
+
+  it("503 when a dependency (the DB, via isReady) is unavailable", async () => {
+    app = buildServer({ submitter: workingSubmitter(), isReady: () => false });
+    const res = await app.inject({ url: "/ready" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ status: "not_ready", service: "wallet-service" });
+  });
+
+  it("503 when the readiness probe throws (e.g. a DB ping that errors)", async () => {
+    app = buildServer({
+      submitter: workingSubmitter(),
+      isReady: async () => {
+        throw new Error("connection refused");
+      },
+    });
+    const res = await app.inject({ url: "/ready" });
+    expect(res.statusCode).toBe(503);
+  });
+});
+
 describe("POST /wallet/submit fails closed when scope check errors (FIX 7 mid-run)", () => {
   const PASSPHRASE = "Test SDF Network ; September 2015";
   const KNOWN_WALLET = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
