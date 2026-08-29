@@ -147,6 +147,46 @@ are env-tunable (see below). **Signed job payloads are intentionally not
 implemented** — there is no untrusted queue between the service and the worker
 (the shared Postgres is the trust boundary); see docs/decisions.md.
 
+## Consumer group topology (issue #354)
+
+The worker-service now uses **domain-specific consumer groups** for queue processing.
+Each consumer group:
+
+- Has its own dedicated job store, so groups never compete for the same queue
+- Scales independently via configurable concurrency
+- Runs in isolated worker loops with independent polling
+- Shares common execution machinery (Executor, Resolver)
+
+### Current groups
+
+**Verification group** (`verification`):
+- Processes contract verification jobs from the `verification_records` table
+- Handles artifact download, WASM verification, attestation submission
+- Concurrency controlled by `WORKER_CONCURRENCY` (default: 1)
+- Each worker instance polls and claims its own batch
+
+### Scaling a consumer group
+
+To run more parallel verification workers, increase concurrency:
+
+```sh
+WORKER_CONCURRENCY=4 pnpm --filter @vellar/worker-service start
+```
+
+This spawns 4 independent worker loops, each claiming and processing verification
+jobs concurrently. With a batch size of N, total throughput = concurrency × N.
+
+### Adding new consumer groups
+
+Future domains (e.g., transaction processing) can be added by:
+
+1. Defining a new store interface (e.g., `TransactionJobStore`)
+2. Adding a factory function in `consumer-groups.ts` (e.g., `createTransactionGroup`)
+3. Starting the group in `index.ts` with its own store and concurrency settings
+
+The architecture ensures groups remain isolated — a verification worker will never
+process transaction jobs and vice versa.
+
 ## Env
 
 | Var                       | Purpose                                                        | Default |
@@ -159,3 +199,4 @@ implemented** — there is no untrusted queue between the service and the worker
 | `VERIFY_BUILD_MEMORY`     | container memory cap (docker `--memory`)                       | 2g      |
 | `VERIFY_BUILD_CPUS`       | container CPU cap (docker `--cpus`)                            | 2       |
 | `VERIFY_BUILD_PIDS_LIMIT` | max processes in the container                                 | 512     |
+| `WORKER_CONCURRENCY`      | parallel worker loops in the verification consumer group       | 1       |
