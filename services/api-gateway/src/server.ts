@@ -1,9 +1,9 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
-import proxy from "@fastify/http-proxy";
 import rateLimit from "@fastify/rate-limit";
 import { registerHealth, registerMetrics } from "@vellar/service-kit";
+import { registerProxyRoute } from "./register-proxy-route";
 
 // Gateway (technical-doc.md §6.3, §8; idea.md §12): the single public entry
 // point, so the cross-cutting security controls live HERE (defense at the
@@ -119,37 +119,21 @@ export function buildServer(options: GatewayOptions = {}): FastifyInstance {
   registerHealth(app, "api-gateway");
   registerMetrics(app, "api-gateway");
 
-  app.register(proxy, {
-    upstream: walletServiceUrl,
-    prefix: "/wallet",
-    rewritePrefix: "/wallet",
-  });
+  registerProxyRoute(app, { upstream: walletServiceUrl, prefix: "/wallet" });
 
   const lifecycleServiceUrl =
     options.lifecycleServiceUrl ?? process.env.LIFECYCLE_SERVICE_URL ?? "http://localhost:4002";
-  app.register(proxy, {
-    upstream: lifecycleServiceUrl,
-    prefix: "/lifecycle",
-    rewritePrefix: "/lifecycle",
-  });
+  registerProxyRoute(app, { upstream: lifecycleServiceUrl, prefix: "/lifecycle" });
 
   const policyServiceUrl =
     options.policyServiceUrl ?? process.env.POLICY_SERVICE_URL ?? "http://localhost:4003";
-  app.register(proxy, {
-    upstream: policyServiceUrl,
-    prefix: "/policies",
-    rewritePrefix: "/policies",
-  });
+  registerProxyRoute(app, { upstream: policyServiceUrl, prefix: "/policies" });
 
   const verificationServiceUrl =
     options.verificationServiceUrl ??
     process.env.VERIFICATION_SERVICE_URL ??
     "http://localhost:4004";
-  app.register(proxy, {
-    upstream: verificationServiceUrl,
-    prefix: "/verification",
-    rewritePrefix: "/verification",
-  });
+  registerProxyRoute(app, { upstream: verificationServiceUrl, prefix: "/verification" });
 
   return app;
 }
